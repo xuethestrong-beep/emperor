@@ -82,6 +82,18 @@ login({appState},(err,api)=>{
   const args=body.slice(config.prefix.length).trim().split(/ +/);
   const cmd=cmds.get(args[0].toLowerCase());
   if(!cmd)return;
+    // DISABLE CHECK
+  const disPath=path.join(__dirname,"disabled.json");
+  if(fs.existsSync(disPath)){
+     try{
+    const data=JSON.parse(fs.readFileSync(disPath,"utf8"));
+    const name=args[0].toLowerCase();
+    const globalList=data.global||data.disabled||[];
+    const threadList=(data.threads&&data.threads[event.threadID])||[];
+    if(globalList.includes(name)||threadList.includes(name)){
+     return api.sendMessage("Command "+name+" is disabled "+(threadList.includes(name)?"in this group":"globally")+" by owner.",event.threadID);
+    }
+  }catch(e){}
   if(locked&&cmd.config.name!=="lock"){
    const ownerID=(config.ownerID||"").toString();
    const admins=config.adminIDs||config.admin||[];
