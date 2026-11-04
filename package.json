@@ -2,14 +2,11 @@
   "name": "emperor",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
+  "scripts": { "start": "node index.js" },
   "dependencies": {
     "ws3-fca": "1.0.0",
     "npmlog": "^7.0.1",
     "yt-search": "^2.13.1",
-    "ytdl-core": "^4.11.5",
     "axios": "^1.7.2",
     "fs-extra": "^11.2.0"
   }
