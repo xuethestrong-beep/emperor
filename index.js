@@ -1,89 +1,51 @@
-const fs = require("fs");
-const path = require("path");
-const login = require("ws3-fca");
-
-// ===== CONFIG =====
-let config = {};
-try {
-  config = JSON.parse(fs.readFileSync("./config.json", "utf8"));
-} catch(e) {
-  config = {
-    prefix: "!",
-    admin: ["61593117279214"],
-    adminIDs: ["61593117279214"],
-    owner: "xuethestrong-beep",
-    ownerName: "Feng Xiluo",
-    ownerID: "61593117279214",
-    botName: "Emperor",
-    autoReact: true,
-    autoReactFor: "owner",
-    autoReactEmoji: "😆"
-  };
-}
-
-// ===== APPSTATE AUTO FIND =====
-let appStatePath = "./appstate.json";
-if (fs.existsSync("./fbstate.json")) appStatePath = "./fbstate.json";
-else if (fs.existsSync("./appstate.json")) appStatePath = "./appstate.json";
-else if (fs.existsSync("./appstate.txt")) appStatePath = "./appstate.txt";
-else if (fs.existsSync("./fbstate.json")) appStatePath = "./fbstate.json";
-
-console.log(`[Emperor] Using state: ${appStatePath}`);
-
-if (!fs.existsSync(appStatePath)) {
-  console.log(`[ERROR] No appstate file found! Please upload appstate.json`);
-}
-
-// ===== LOAD COMMANDS =====
-const cmdsPath = "./scripts/cmds";
-const cmds = new Map();
-
-try {
-  const files = fs.readdirSync(cmdsPath);
-  files.forEach(file => {
-    if (file.endsWith(".js")) {
-      try {
-        delete require.cache[require.resolve(path.join(__dirname, cmdsPath, file))];
-        const cmd = require(path.join(__dirname, cmdsPath, file));
-        if (cmd.config && cmd.config.name) {
-          cmds.set(cmd.config.name.toLowerCase(), cmd);
-          if (cmd.config.aliases) {
-            cmd.config.aliases.forEach(alias => {
-              cmds.set(alias.toLowerCase(), cmd);
-            });
-          }
-        }
-      } catch(err) {
-        console.log(`[SKIP] ${file}: ${err.message}`);
-      }
+const fs=require("fs"),path=require("path"),login=require("ws3-fca");
+let config=JSON.parse(fs.readFileSync("./config.json","utf8"));
+let statePath="./appstate.json";
+if(fs.existsSync("./fbstate.json"))statePath="./fbstate.json";
+console.log("State:",statePath);
+const cmds=new Map();
+fs.readdirSync("./scripts/cmds").forEach(f=>{
+ if(f.endsWith(".js")){
+  try{
+   const c=require(path.join(__dirname,"./scripts/cmds",f));
+   if(c.config&&c.config.name)cmds.set(c.config.name.toLowerCase(),c);
+  }catch(e){console.log("Skip "+f)}
+ }
+});
+let appState=JSON.parse(fs.readFileSync(statePath,"utf8"));
+login({appState},(err,api)=>{
+ if(err)return console.error(err);
+ console.log("Emperor Started!");
+ api.setOptions({listenEvents:true,selfListen:false});
+ api.listen(async(err,event)=>{
+  if(err)return;
+  if(event.type!=="message"&&event.type!=="message_reply")return;
+  const body=event.body||"";
+  const senderID=(event.senderID||"").toString();
+  if(config.autoReact){
+   try{
+    const ownerID=(config.ownerID||"61593117279214").toString();
+    if(senderID===ownerID){
+     api.setMessageReaction(config.autoReactEmoji||"👑",event.messageID,()=>{},true);
     }
-  });
-  console.log(`[Emperor] Loaded ${cmds.size} commands`);
-} catch(e) {
-  console.log(`[ERROR] cmds folder: ${e.message}`);
-}
-
-// ===== LOGIN =====
-let appState;
-try {
-  appState = JSON.parse(fs.readFileSync(appStatePath, "utf8"));
-} catch(e) {
-  try {
-    appState = JSON.parse(fs.readFileSync(appStatePath, "utf8").toString());
-  } catch(e2) {
-    console.error("Failed to read appstate:", e2.message);
-    appState = [];
+   }catch(e){}
   }
-}
-
-login({ appState }, (err, api) => {
-  if (err) {
-    console.error("[LOGIN ERROR]", err);
-    return;
+  if(!body.startsWith(config.prefix))return;
+  const lockPath=path.join(__dirname,"locked.json");
+  let locked=false;
+  if(fs.existsSync(lockPath)){
+   try{locked=JSON.parse(fs.readFileSync(lockPath,"utf8")).locked;}catch(e){}
   }
-
-  console.log("[Emperor] Bot Started! 👑");
-  api.setOptions({ listenEvents: true, selfListen: false, logLevel: "silent" });
-
-  api.listen(async (err, event) => {
-   
+  const args=body.slice(config.prefix.length).trim().split(/ +/);
+  const cmd=cmds.get(args[0].toLowerCase());
+  if(!cmd)return;
+  if(locked&&cmd.config.name!=="lock"){
+   const ownerID=(config.ownerID||"").toString();
+   const admins=config.adminIDs||config.admin||[];
+   if(senderID!==ownerID&&!admins.includes(senderID)){
+    return api.sendMessage("ACCESS DENIED - Bot is locked for owner only.",event.threadID);
+   }
+  }
+  try{await cmd.onStart({api,event,args,config,cmds});}catch(e){console.error(e)}
+ });
+});
