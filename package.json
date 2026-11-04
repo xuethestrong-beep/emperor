@@ -1,0 +1,13 @@
+{
+  "name": "emperor",
+  "version": "1.0.0",
+  "description": "Emperor Bot - Own Version",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "fca-priyansh": "^1.0.0",
+    "fs-extra": "^11.0.0"
+  }
+}
