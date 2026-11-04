@@ -60,7 +60,9 @@ login({appState},(err,api)=>{
   }
   const args=body.slice(config.prefix.length).trim().split(/ +/);
   const cmd=cmds.get(args[0].toLowerCase());
-  if(!cmd)return;
+    if(!cmd){
+   return api.sendMessage("ᴛʜᴇ ᴄᴏᴍᴍᴀɴᴅ ʏᴏᴜ ᴀʀᴇ ᴜꜱɪɴɢ ᴅᴏᴇꜱ ɴᴏᴛ ᴇxɪꜱᴛ, ᴛʏᴘᴇ !ʜᴇʟᴘ ᴛᴏ ꜱᴇᴇ ᴀʟʟ ᴀᴠᴀɪʟᴀʙʟᴇ ᴄᴏᴍᴍᴀɴᴅꜱ", event.threadID);
+    }
   const disPath=path.join(__dirname,"disabled.json");
   if(fs.existsSync(disPath)){
    try{
