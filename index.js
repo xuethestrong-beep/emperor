@@ -65,6 +65,10 @@ login({appState},(err,api)=>{
     body: "ᴛʜᴇ ᴄᴏᴍᴍᴀɴᴅ ʏᴏᴜ ᴀʀᴇ ᴜꜱɪɴɢ ᴅᴏᴇꜱ ɴᴏᴛ ᴇxɪꜱᴛ, ᴛʏᴘᴇ !ʜᴇʟᴘ ᴛᴏ ꜱᴇᴇ ᴀʟʟ ᴀᴠᴀɪʟᴀʙʟᴇ ᴄᴏᴍᴍᴀɴᴅꜱ"
    }, event.threadID, event.messageID);
    }
+    // MAKE ALL COMMANDS REPLY
+  const origSend = api.sendMessage;
+  api.sendMessage = (msg, tid, mid) => origSend.call(api, msg, tid || event.threadID, mid || event.messageID);
+     
   const disPath=path.join(__dirname,"disabled.json");
   if(fs.existsSync(disPath)){
    try{
