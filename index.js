@@ -61,17 +61,42 @@ if (config.autoReact) {
   } catch(e) {}
 }
 
-      // COMMAND HANDLER
-      if (body.startsWith(config.prefix)) {
-        const args = body.slice(config.prefix.length).trim().split(/ +/);
-        const cmdName = args[0].toLowerCase();
-        const command = cmds.get(cmdName);
-        if (command) {
-          try {
-            command.onStart({ api, event, args, config, cmds });
-          } catch(e){ console.error(e); }
+        // 🔒 COMMAND HANDLER WITH OWNER LOCK
+  if (body.startsWith(config.prefix)) {
+    const fs = require("fs");
+    const path = require("path");
+    const lockPath = path.join(__dirname, "locked.json");
+    
+    let isLocked = false;
+    if (fs.existsSync(lockPath)) {
+      try { isLocked = JSON.parse(fs.readFileSync(lockPath, "utf8")).locked; } catch(e) {}
+    }
+
+    const args = body.slice(config.prefix.length).trim().split(/ +/);
+    const cmdName = args[0].toLowerCase();
+    const command = cmds.get(cmdName);
+    
+    if (command) {
+      // If locked, only owner can use ANY command
+      if (isLocked) {
+        const ownerID = (config.ownerID || "").toString();
+        const adminIDs = config.adminIDs || config.admin || [];
+        const senderID = event.senderID.toString();
+        const isOwner = senderID === ownerID || adminIDs.includes(senderID);
+        
+        // Allow lock command itself to unlock
+        if (cmdName !== "lock" && !isOwner) {
+          return api.sendMessage(
+`╭─ 🔒 LOCKED ─╮
+│ ❌ Bot is locked by Owner!
+│ 👑 Only owner can use commands
+│ Owner: ${config.ownerName}
+╰──────────────╯`, event.threadID);
         }
       }
+
+      try {
+        command.onStart({ api, event, args, config, cmds });
+      } catch(e){ console.error(e); }
     }
-  });
-});
+  }
