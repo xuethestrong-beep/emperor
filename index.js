@@ -41,7 +41,7 @@ login({appState},(err,api)=>{
   process.on("uncaughtException", e=>console.log(e));
   process.on("unhandledRejection", e=>console.log(e));
  api.setOptions({listenEvents:true,selfListen:false});
- api.listen((err,event)=>{
+ api.listen(async (err,event)=>{
   if(err)return;
   if(event.type!=="message"&&event.type!=="message_reply")return;
   const body=event.body||"";
