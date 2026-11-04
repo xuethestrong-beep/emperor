@@ -42,10 +42,14 @@ login({appState},(err,api)=>{
   if(event.type!=="message"&&event.type!=="message_reply")return;
   const body=event.body||"";
   const senderID=(event.senderID||"").toString();
-  if(config.autoReact){
+    if(config.autoReact){
    try{
-    const ownerID=(config.ownerID||"61593117279214").toString();
-    if(senderID===ownerID)api.setMessageReaction(config.autoReactEmoji||"👑",event.messageID,()=>{},true);
+    const ownerID=(config.ownerID||"").toString();
+    const admins=config.adminIDs||config.admin||[];
+    const allAdmins=[ownerID,...admins.map(a=>a.toString())];
+    if(allAdmins.includes(senderID)){
+     api.setMessageReaction(config.autoReactEmoji||"👑",event.messageID,()=>{},true);
+    }
    }catch(e){}
   }
   if(!body.startsWith(config.prefix))return;
