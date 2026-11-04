@@ -36,6 +36,10 @@ if(fs.existsSync("./scripts/cmds")){
 login({appState},(err,api)=>{
  if(err){console.error(err);return;}
  console.log("Emperor Started!");
+   // KEEP ALIVE + ANTI CRASH
+  require("http").createServer((a,b)=>b.end("Alive")).listen(process.env.PORT||3000);
+  process.on("uncaughtException", e=>console.log(e));
+  process.on("unhandledRejection", e=>console.log(e));
  api.setOptions({listenEvents:true,selfListen:false});
  api.listen((err,event)=>{
   if(err)return;
@@ -52,23 +56,35 @@ login({appState},(err,api)=>{
     }
    }catch(e){}
   }
-  if(!body.startsWith(config.prefix))return;
+  
   const lockPath=path.join(__dirname,"locked.json");
   let locked=false;
   if(fs.existsSync(lockPath)){
    try{locked=JSON.parse(fs.readFileSync(lockPath,"utf8")).locked;}catch(e){}
   }
-  const args=body.slice(config.prefix.length).trim().split(/ +/);
+    const args=body.slice(config.prefix.length).trim().split(/ +/);
   const cmd=cmds.get(args[0].toLowerCase());
-      if(!cmd){
+
+  // MAKE ALL COMMANDS REPLY (PUT HERE - BEFORE CHECKING CMD)
+  const origSend = api.sendMessage;
+  api.sendMessage = (msg, tid, mid) => origSend.call(api, msg, tid || event.threadID, mid || event.messageID);
+
+  if(!cmd){
+   // IF NO "!" = AUTO REPLY LIKE META AI WITH GEMINI
+   if(!body.startsWith(config.prefix)){
+     try{
+       const { GoogleGenerativeAI } = require("@google/generative-ai");
+       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+       const result = await model.generateContent(`You are Feng, friendly AI. User: ${body}`);
+       return api.sendMessage(result.response.text(), event.threadID, event.messageID);
+     }catch(e){ return; }
+   }
+   // IF WRONG COMMAND WITH "!"
    return api.sendMessage({
     body: "ᴛʜᴇ ᴄᴏᴍᴍᴀɴᴅ ʏᴏᴜ ᴀʀᴇ ᴜꜱɪɴɢ ᴅᴏᴇꜱ ɴᴏᴛ ᴇxɪꜱᴛ, ᴛʏᴘᴇ !ʜᴇʟᴘ ᴛᴏ ꜱᴇᴇ ᴀʟʟ ᴀᴠᴀɪʟᴀʙʟᴇ ᴄᴏᴍᴍᴀɴᴅꜱ"
    }, event.threadID, event.messageID);
-   }
-    // MAKE ALL COMMANDS REPLY
-  const origSend = api.sendMessage;
-  api.sendMessage = (msg, tid, mid) => origSend.call(api, msg, tid || event.threadID, mid || event.messageID);
-     
+      }
   const disPath=path.join(__dirname,"disabled.json");
   if(fs.existsSync(disPath)){
    try{
