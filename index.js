@@ -1,4 +1,4 @@
-const login = require("fca-priyansh");
+const login = require("ws3-fca");
 const config = require("./config.json");
 
 console.log(`\n👑 ${config.botName} Starting... Owner: ${config.owner}`);
