@@ -1,8 +1,12 @@
 {
   "prefix": "!",
   "admin": ["61593117279214"],
-  "botName": "Emperor",
+  "adminIDs": ["61593117279214"],
   "owner": "xuethestrong-beep",
+  "ownerName": "zin",
+  "ownerID": "61593117279214",
+  "botName": "Emperor",
   "autoReact": true,
-  "autoReactEmoji": "👑"
+  "autoReactFor": "owner",
+  "autoReactEmoji": "😆"
 }
