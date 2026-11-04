@@ -6,6 +6,7 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "ws3-fca": "1.0.0"
+    "ws3-fca": "1.0.0",
+    "npmlog": "^7.0.1"
   }
 }
