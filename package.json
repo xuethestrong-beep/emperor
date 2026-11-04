@@ -5,10 +5,7 @@
   "scripts": {
     "start": "node index.js"
   },
-  "engines": {
-    "node": "18.x"
-  },
   "dependencies": {
-    "fca-priyansh": "^1.0.1"
+    "ws3-fca": "1.0.0"
   }
 }
