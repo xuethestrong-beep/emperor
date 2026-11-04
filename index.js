@@ -49,10 +49,17 @@ login({ appState }, (err, api) => {
     if (event.type === "message") {
       const body = event.body || "";
       
-      // AUTO REACT
-      if (config.autoReact) {
-        try { api.setMessageReaction(config.autoReact, event.messageID, () => {}, true); } catch {}
-      }
+      // 👑 AUTO REACT - OWNER ONLY
+if (config.autoReact) {
+  try {
+    const ownerID = (config.ownerID || "61593117279214").toString();
+    const senderID = event.senderID.toString();
+    const reactFor = config.autoReactFor || "owner";
+    if (reactFor === "owner" && senderID === ownerID) {
+      api.setMessageReaction(config.autoReactEmoji || "😆", event.messageID, () => {}, true);
+    }
+  } catch(e) {}
+}
 
       // COMMAND HANDLER
       if (body.startsWith(config.prefix)) {
