@@ -1,75 +1,67 @@
 const fs=require("fs"),path=require("path");
-const disablePath=path.join(__dirname,"..","..","disabled.json");
-
-function getDisabled(){
- if(!fs.existsSync(disablePath))return [];
- try{return JSON.parse(fs.readFileSync(disablePath,"utf8")).disabled||[];}catch(e){return [];}
+const p=path.join(__dirname,"..","..","disabled.json");
+function load(){
+ if(!fs.existsSync(p))return {global:[],threads:{}};
+ try{return JSON.parse(fs.readFileSync(p,"utf8"));}catch(e){return {global:[],threads:{}};}
 }
-function saveDisabled(list){
- fs.writeFileSync(disablePath,JSON.stringify({disabled:list},null,2));
-}
-
+function save(d){fs.writeFileSync(p,JSON.stringify(d,null,2));}
 module.exports={
- config:{
-  name:"disable",
-  aliases:["cmd","command"],
-  version:"1.0",
-  author:"Feng Xiluo",
-  role:2,
-  category:"admin",
-  shortDescription:"Disable/enable commands"
- },
- onStart:async function({api,event,args,config,cmds}){
-  const type=(args[1]||"").toLowerCase();
+ config:{name:"disable",aliases:["offcmd"],version:"2.0",author:"Feng Xiluo",role:2,category:"admin"},
+ onStart:async function({api,event,args,cmds}){
+  const action=(args[1]||"").toLowerCase();
   const cmdName=(args[2]||"").toLowerCase();
-  let disabled=getDisabled();
-
-  if(!type){
-   return api.sendMessage(
-`DISABLE COMMAND
-
-Usage:
-!disable on sing - disable sing
-!disable off sing - enable sing
-!disable list - show disabled
-!disable on all - disable all (except this)
-!disable off all - enable all
-
-Disabled: ${disabled.length?disabled.join(", "):"none"}`,
-   event.threadID);
+  const where=(args[3]||"").toLowerCase();
+  let data=load();
+  if(!data.global)data.global=[];
+  if(!data.threads)data.threads={};
+  const tid=event.threadID;
+  if(!action){
+   let m="DISABLE SPECIFIC\n\n";
+   m+="!disable on <cmd> - global\n";
+   m+="!disable on <cmd> this - this group only\n";
+   m+="!disable off <cmd> - enable global\n";
+   m+="!disable off <cmd> this - enable this group\n";
+   m+="!disable list - show all\n";
+   m+="!disable list this - this group\n\n";
+   m+=`Global: ${data.global.length?data.global.join(", "):"none"}\n`;
+   const tl=data.threads[tid]||[];
+   m+=`This group: ${tl.length?tl.join(", "):"none"}`;
+   return api.sendMessage(m,tid);
   }
-
-  if(type==="list"){
-   return api.sendMessage(`Disabled commands: ${disabled.length?disabled.join(", "):"none"}`,event.threadID);
-  }
-
-  if(type==="on"){
-   if(cmdName==="all"){
-    const all=[...cmds.keys()];
-    const filtered=all.filter(c=>c!=="disable"&&c!=="lock");
-    saveDisabled([...new Set(filtered)]);
-    return api.sendMessage(`All commands disabled! (${filtered.length})`,event.threadID);
+  if(action==="list"){
+   if(where==="this"){
+    const l=data.threads[tid]||[];
+    return api.sendMessage(`Disabled in THIS group: ${l.length?l.join(", "):"none"}`,tid);
    }
-   if(!cmdName)return api.sendMessage("Provide command name: !disable on sing",event.threadID);
-   if(!cmds.has(cmdName))return api.sendMessage(`Command ${cmdName} not found!`,event.threadID);
-   if(disabled.includes(cmdName))return api.sendMessage(`${cmdName} already disabled!`,event.threadID);
-   disabled.push(cmdName);
-   saveDisabled(disabled);
-   return api.sendMessage(`Command ${cmdName} is now DISABLED!`,event.threadID);
+   let m=`Global: ${data.global.length?data.global.join(", "):"none"}\n`;
+   for(const id in data.threads){m+=`Thread ${id}: ${data.threads[id].join(", ")}\n`;}
+   return api.sendMessage(m||"none",tid);
   }
-
-  if(type==="off"){
-   if(cmdName==="all"){
-    saveDisabled([]);
-    return api.sendMessage("All commands enabled!",event.threadID);
+  if(!cmdName)return api.sendMessage("Ex: !disable on sing this",tid);
+  if(cmdName!=="all"&&!cmds.has(cmdName))return api.sendMessage(`${cmdName} not found!`,tid);
+  if(cmdName==="disable"||cmdName==="lock")return api.sendMessage("Cannot disable this!",tid);
+  const isThis=where==="this"||where==="here"||where==="group";
+  if(action==="on"){
+   if(isThis){
+    if(!data.threads[tid])data.threads[tid]=[];
+    if(cmdName==="all"){data.threads[tid]=[...cmds.keys()].filter(c=>c!=="disable"&&c!=="lock");}
+    else{if(data.threads[tid].includes(cmdName))return api.sendMessage(`${cmdName} already disabled in this group!`,tid);data.threads[tid].push(cmdName);}
+    save(data);return api.sendMessage(`LOCKED ${cmdName} in THIS GROUP only!`,tid);
+   }else{
+    if(cmdName==="all"){data.global=[...cmds.keys()].filter(c=>c!=="disable"&&c!=="lock");}
+    else{if(data.global.includes(cmdName))return api.sendMessage(`${cmdName} already disabled globally!`,tid);data.global.push(cmdName);}
+    save(data);return api.sendMessage(`LOCKED ${cmdName} GLOBALLY!`,tid);
    }
-   if(!cmdName)return api.sendMessage("Provide command name: !disable off sing",event.threadID);
-   if(!disabled.includes(cmdName))return api.sendMessage(`${cmdName} is not disabled!`,event.threadID);
-   disabled=disabled.filter(c=>c!==cmdName);
-   saveDisabled(disabled);
-   return api.sendMessage(`Command ${cmdName} is now ENABLED!`,event.threadID);
   }
-
-  api.sendMessage("Use: !disable on/off <name> or !disable list",event.threadID);
+  if(action==="off"){
+   if(isThis){
+    if(!data.threads[tid])return api.sendMessage("Nothing disabled here!",tid);
+    if(cmdName==="all")data.threads[tid]=[];else data.threads[tid]=data.threads[tid].filter(c=>c!==cmdName);
+    save(data);return api.sendMessage(`UNLOCKED ${cmdName} in THIS GROUP!`,tid);
+   }else{
+    if(cmdName==="all")data.global=[];else data.global=data.global.filter(c=>c!==cmdName);
+    save(data);return api.sendMessage(`UNLOCKED ${cmdName} GLOBALLY!`,tid);
+   }
+  }
  }
 };
