@@ -10,25 +10,22 @@ function saveBank(data) { fs.writeFileSync(BANK_FILE, JSON.stringify(data, null,
 
 module.exports.config = {
   name: "addmoney",
-  version: "1.0 ADMIN",
-  role: 2, // 2 = Admin only (GoatBot)
-  description: "Add money admin only",
-  usage: "!addmoney @user amount"
+  aliases: ["am", "setmoney", "addbal"],
+  version: "2.0 TENGSAMA",
+  role: 2,
+  description: "Admin money control - Master TENGSAMA"
 };
 
 module.exports.onStart = async ({ api, event, args }) => {
-  const ADMIN_ID = "61593117279214"; // YOUR ID MASTER
-  
-  // Double check admin - extra security
+  const ADMIN_ID = "61593117279214";
   if (event.senderID !== ADMIN_ID) {
-    return api.sendMessage("❌ Admin only! You are not my Master Laoag!", event.threadID, event.messageID);
+    return api.sendMessage(`╔════════════════╗\n║ ❌ ACCESS DENIED ║\n╚════════════════╝\nOnly Master TENGSAMA can use this.`, event.threadID, event.messageID);
   }
 
   const threadID = event.threadID;
   let targetID = null;
   let amount = null;
 
-  // Check if reply or tag
   if (event.type === "message_reply") {
     targetID = event.messageReply.senderID;
     amount = parseInt(args[0]);
@@ -36,43 +33,23 @@ module.exports.onStart = async ({ api, event, args }) => {
     targetID = Object.keys(event.mentions)[0];
     amount = parseInt(args[1]);
   } else {
-    // addmoney 615931... 5000
     targetID = args[0];
     amount = parseInt(args[1]);
   }
 
   if (!targetID || isNaN(amount)) {
-    return api.sendMessage(
-`💰 ADD MONEY ADMIN ONLY
-Master Laoag only!
-
-Use:
-!addmoney @user 5000
-!addmoney reply 5000 (reply to user)
-!addmoney 61593117279214 5000
-
-To remove: !addmoney @user -500`,
-      threadID, event.messageID
-    );
+    return api.sendMessage(`╔════════════════════╗\n║ 💰 FENG ADMIN PANEL ║\n╚════════════════════╝\n\nUse: !addmoney @user 5000\n🔐 Admin: Master TENGSAMA Only`, threadID, event.messageID);
   }
 
   const bank = loadBank();
   if (!bank[targetID]) bank[targetID] = { wallet: 1000, bank: 0, lastDaily: 0, lastWork: 0, lastInterest: Date.now() };
   
+  const oldWallet = bank[targetID].wallet;
   bank[targetID].wallet += amount;
   if (bank[targetID].wallet < 0) bank[targetID].wallet = 0;
-  
   saveBank(bank);
 
-  return api.sendMessage(
-`✅ ADMIN ADDED MONEY!
+  const name = Object.values(event.mentions)[0]?.replace("@", "") || targetID.slice(0, 8) + "...";
 
-Target: ${targetID}
-Amount: ${amount > 0 ? `+$${amount}` : `-$${Math.abs(amount)}`}
-New Wallet: $${bank[targetID].wallet}
-New Total: $${bank[targetID].wallet + bank[targetID].bank}
-
-Done by Master ${ADMIN_ID}`,
-    threadID, event.messageID
-  );
+  return api.sendMessage(`╔════════════════════╗\n║ ✅ TRANSACTION SUCCESS ║\n╚════════════════════╝\n\n👤 User: ${name}\n💰 Before: $${oldWallet}\nAfter: $${bank[targetID].wallet}\n\n👑 Executed by: Master TENGSAMA`, threadID, event.messageID);
 };
