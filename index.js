@@ -1,134 +1,206 @@
-const fs=require("fs"),path=require("path");
-let m; try{m=require("ws3-fca");}catch{m=require("fca-unofficial");}
-let login=m.default||m.login||m;
-let appState=JSON.parse(process.env.APPSTATE);
-console.log("FENG UNIVERSAL INDEX - ALL CMDS WORK");
-const OWNER=process.env.OWNER_UID||"61570228081320";
+const fs = require("fs");
+const path = require("path");
+const http = require("http");
 
-try{
- let http=require("http");
- let s=http.createServer((_,r)=>{r.end("FENG UNIVERSAL");});
- s.on("error",()=>{});
- s.listen(process.env.PORT||8080);
-}catch{}
-
-// ==== GLOBAL FIX FOR GOATBOT CMDS ====
-global.config = { prefix: "!", adminBot: [OWNER] };
-global.GoatBot = { config: global.config };
-global.utils = { getPrefix: ()=> "!" };
-global.client = { allCommands: new Map() };
-
-let cmds=new Map();
-function loadCmds(){
- cmds.clear();
- let folders=["./scripts/cmds","./cmds"];
- for(let folder of folders){
-  if(fs.existsSync(folder)){
-   fs.readdirSync(folder).filter(f=>f.endsWith(".js")).forEach(file=>{
-    try{
-     delete require.cache[require.resolve(path.join(process.cwd(),folder,file))];
-     let cmd=require(path.join(process.cwd(),folder,file));
-     let name=(cmd.config?.name||cmd.name||file.replace(".js","")).toLowerCase();
-     cmds.set(name,cmd);
-     global.client.allCommands.set(name,cmd);
-     // also aliases
-     if(cmd.config?.aliases){
-       cmd.config.aliases.forEach(a=>cmds.set(a.toLowerCase(),cmd));
-     }
-     console.log(`✅ ${name}`);
-    }catch(e){console.log(`❌ ${file}: ${e.message}`);}
-   });
+// ============ LOAD APPSTATE FROM RAILWAY VARIABLE ============
+let appState;
+try {
+  if (process.env.APPSTATE) {
+    console.log("[TENGSAMA] Using APPSTATE from Railway Variable - SAFE & HIDDEN");
+    const decoded = Buffer.from(process.env.APPSTATE, 'base64').toString('utf8');
+    appState = JSON.parse(decoded);
+  } else if (fs.existsSync(path.join(__dirname, "appstate.json"))) {
+    console.log("[TENGSAMA] Using appstate.json file - WARNING: Use Railway Variable!");
+    appState = JSON.parse(fs.readFileSync(path.join(__dirname, "appstate.json"), "utf8"));
+  } else {
+    console.error("[ERROR] No appstate found! Set APPSTATE in Railway Variables!");
+    process.exit(1);
   }
- }
- console.log(`LOADED ${cmds.size} CMDS`);
+} catch (e) {
+  console.error("[ERROR] Failed to parse appstate:", e.message);
+  process.exit(1);
 }
-loadCmds();
 
-function startBot(){
- login({appState,forceLogin:true,listenEvents:true,logLevel:"silent"},(err,api)=>{
-  if(err){console.log("APPSTATE EXPIRED",err);return;}
-  let botID=api.getCurrentUserID();
-  console.log(`FENG ONLINE ${botID}`);
-  api.setOptions({listenEvents:true,selfListen:false,updatePresence:false});
+// ============ LOGIN LIBRARY ============
+let login;
+try {
+  login = require("fca-unofficial");
+  console.log("[LIB] Using fca-unofficial");
+} catch {
+  try {
+    login = require("ws3-fca");
+    console.log("[LIB] Using ws3-fca fallback");
+  } catch {
+    login = require("@dongdev/fca-unofficial");
+    console.log("[LIB] Using @dongdev/fca-unofficial");
+  }
+}
 
-  api.listenMqtt(async(e,event)=>{
-   try{
-    if(e){console.log("LISTEN ERR",e);return;}
-    if(!event.body) return;
-    if(event.senderID==botID) return;
-    let body=event.body.trim();
-    if(!body.startsWith("!")) return;
-    
-    let args=body.slice(1).split(/ +/);
-    let name=args[0].toLowerCase();
-    let restArgs=args.slice(1);
-    
-    if(!cmds.has(name)){
-      console.log(`CMD NOT FOUND: ${name}`);
+let apiInstance = null;
+let retryCount = 0;
+const MAX_RETRY = 20;
+const cmds = {};
+
+// ============ LOAD ALL COMMANDS ============
+function loadCommands() {
+  const cmdsPath = path.join(__dirname, "scripts/cmds");
+  if (!fs.existsSync(cmdsPath)) {
+    console.log("[ERROR] scripts/cmds folder not found!");
+    return;
+  }
+  const files = fs.readdirSync(cmdsPath);
+  let loaded = 0;
+  files.forEach(file => {
+    if (!file.endsWith(".js")) return;
+    try {
+      const fullPath = path.join(cmdsPath, file);
+      delete require.cache[require.resolve(fullPath)];
+      const cmd = require(fullPath);
+      if (cmd.config && cmd.config.name) {
+        cmds[cmd.config.name.toLowerCase()] = cmd;
+        if (cmd.config.aliases) {
+          cmd.config.aliases.forEach(alias => {
+            cmds[alias.toLowerCase()] = cmd;
+          });
+        }
+        console.log(`✅ DONE !${cmd.config.name}`);
+        loaded++;
+      }
+    } catch (e) {
+      console.log(`❌ FAIL ${file}: ${e.message}`);
+    }
+  });
+  console.log(`[TENGSAMA] LOADED ${loaded} CMDS - FENG UNIVERSAL INDEX`);
+}
+
+// ============ START BOT ============
+function startBot() {
+  console.log(`\n[TENGSAMA] Starting bot... Attempt ${retryCount + 1}/${MAX_RETRY}`);
+  console.log(`[TIME] ${new Date().toLocaleString("en-PH", { timeZone: "Asia/Manila" })}`);
+
+  loadCommands();
+
+  login({ appState: appState, selfListen: false, autoMarkRead: true }, (err, api) => {
+    if (err) {
+      console.error("[LOGIN FAILED]", err.error || err.message || err);
+      console.error("[INFO] Your appstate is expired or Facebook blocked Railway IP!");
+      retryCount++;
+      if (retryCount < MAX_RETRY) {
+        console.log(`[RETRY] Waiting 30 seconds... (${retryCount}/${MAX_RETRY})`);
+        setTimeout(startBot, 30000);
+      } else {
+        console.log("[FATAL] Max retry reached! Get new appstate!");
+        setTimeout(() => process.exit(1), 5000);
+      }
       return;
     }
 
-    let cmd=cmds.get(name);
-    console.log(`RUNNING !${name} from ${event.senderID}`);
+    console.log("\n╔════════════════════════╗");
+    console.log("║ ✅ TENGSAMA BOT ONLINE! ║");
+    console.log("╚════════════════════════╝\n");
+    apiInstance = api;
+    retryCount = 0;
 
-    // ==== UNIVERSAL OBJECT - WORKS FOR ALL CMD TYPES ====
-    let message = {
-      reply: (t,cb) => api.sendMessage(t,event.threadID,event.messageID,cb),
-      send: (t,cb) => api.sendMessage(t,event.threadID,cb||event.messageID),
-      unsend: ()=>{}
-    };
+    api.setOptions({
+      listenEvents: true,
+      selfListen: false,
+      autoMarkRead: false,
+      autoMarkDelivery: true
+    });
 
-    let threadsData = {
-      get: async()=>({data:{}, settings:{}}),
-      set: async()=>{},
-      getAll: async()=>[]
-    };
-    let usersData = {
-      get: async()=>({data:{}, name:"User"}),
-      set: async()=>{},
-      getAll: async()=>[]
-    };
+    // ============ LISTEN ============
+    const listener = api.listenMqtt((err, event) => {
+      if (err) {
+        console.error("[LISTEN ERR]", err.message || err);
+        console.log("[RECONNECT] MQTT disconnected, restarting in 10 sec...");
+        try { api.removeAllListeners(); } catch {}
+        setTimeout(startBot, 10000);
+        return;
+      }
 
-    let obj = {
-      api, event, args: restArgs, message,
-      threadsData, usersData,
-      threadModel: { findOne: async()=>null },
-      userModel: { findOne: async()=>null },
-      dashBoardData: {},
-      globalData: {},
-      threadData: {},
-      userData: {},
-      role: String(event.senderID)==String(OWNER)?2:0,
-      prefix: "!",
-      ownerID: OWNER,
-      botID: botID,
-      getLang: (t)=>t,
-      getPrefix: ()=> "!",
-      commandName: name,
-      config: cmd.config || {},
-      // for goatbot style
-      messageID: event.messageID,
-      threadID: event.threadID,
-      senderID: event.senderID
-    };
+      try {
+        // Handle commands with prefix
+        if (event.type === "message" || event.type === "message_reply") {
+          const body = event.body || "";
+          if (!body) return;
 
-    // Try all possible function names
-    if(cmd.onStart) await cmd.onStart(obj);
-    else if(cmd.onChat) await cmd.onChat(obj);
-    else if(cmd.run) await cmd.run(obj);
-    else if(cmd.execute) await cmd.execute(obj);
-    else if(typeof cmd === "function") await cmd(obj);
-    else console.log(`NO RUN FUNCTION FOR ${name}`);
+          // Check if it's a command
+          const prefix = "!";
+          if (body.startsWith(prefix)) {
+            const args = body.slice(prefix.length).trim().split(/ +/);
+            const cmdName = args.shift().toLowerCase();
+            if (cmds[cmdName] && cmds[cmdName].onStart) {
+              console.log(`[CMD] !${cmdName} by ${event.senderID} in ${event.threadID}`);
+              cmds[cmdName].onStart({ api, event, args, body });
+            }
+          } else {
+            // No prefix handling for master
+            const args = body.trim().split(/ +/);
+            const cmdName = args[0].toLowerCase();
+            // Trigger noprefix handler
+            if (cmds["noprefix"] && cmds["noprefix"].onChat) {
+              cmds["noprefix"].onChat({ api, event });
+            }
+            // Also try direct no prefix if user is master
+            if (cmds[cmdName] && ["61593117279214"].includes(event.senderID)) {
+              const cmdArgs = args.slice(1);
+              if (cmds[cmdName].onStart) {
+                console.log(`[CMD-NOPREFIX] ${cmdName} by MASTER`);
+                cmds[cmdName].onStart({ api, event, args: cmdArgs, body });
+              }
+            }
+          }
+        }
 
-    console.log(`✅ DONE !${name}`);
-   }catch(err){
-    console.log(`ERR !${args?.[0]}: ${err.message}`);
-    console.log(err.stack);
-    try{
-      api.sendMessage(`❌ Error in !${args?.[0]}: ${err.message}`, event.threadID, event.messageID);
-    }catch{}
-   }
+        // Handle events (welcome, antiout, etc)
+        if (event.logMessageType || event.type === "event" || event.type === "log:subscribe" || event.type === "log:unsubscribe") {
+          Object.values(cmds).forEach(cmd => {
+            try {
+              if (cmd.onChat) cmd.onChat({ api, event });
+              if (cmd.onEvent) cmd.onEvent({ api, event });
+            } catch {}
+          });
+        }
+      } catch (e) {
+        console.log("[EVENT ERROR]", e.message);
+      }
+    });
   });
- });
 }
+
+// ============ KEEP ALIVE & AUTO RESTART ============
+process.on("unhandledRejection", (reason) => {
+  console.error("[FATAL] Unhandled Rejection:", reason);
+  console.log("[RESTART] Forcing exit to trigger Railway restart in 3 sec...");
+  setTimeout(() => process.exit(1), 3000);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught Exception:", err.message);
+  console.log("[RESTART] Forcing exit...");
+  setTimeout(() => process.exit(1), 3000);
+});
+
+// Keep alive log every 3 mins
+setInterval(() => {
+  console.log(`[ALIVE] TENGSAMA BOT RUNNING - ${new Date().toLocaleTimeString("en-PH", { timeZone: "Asia/Manila" })} - Uptime: ${Math.floor(process.uptime()/60)} mins`);
+}, 180000);
+
+// ============ WEB SERVER FOR RAILWAY ============
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/html" });
+  res.end(`
+    <h1>✅ TENGSAMA BOT IS ALIVE! 👍🏿</h1>
+    <p>Time: ${new Date().toLocaleString("en-PH", { timeZone: "Asia/Manila" })}</p>
+    <p>Uptime: ${Math.floor(process.uptime()/60)} minutes</p>
+    <p>Commands: ${Object.keys(cmds).length}</p>
+    <p>Owner: MASTER TENGSAMA</p>
+  `);
+});
+
+server.listen(process.env.PORT || 3000, () => {
+  console.log(`[WEB] Keep alive server running on port ${process.env.PORT || 3000}`);
+});
+
+// ============ START ============
 startBot();
