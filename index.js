@@ -1,80 +1,57 @@
-const fs = require("fs");
-const path = require("path");
+const Groq = require("groq-sdk");
 
-let fca, login;
-try {
-  fca = require("ws3-fca");
+let login;
+try { 
+  let fca = require("ws3-fca");
   login = fca.default || fca.login || fca;
-} catch(e) {
-  fca = require("fca-unofficial");
-  login = fca;
+} catch { 
+  login = require("fca-unofficial"); 
 }
 
-let appState;
-try {
-  appState = JSON.parse(process.env.APPSTATE);
-} catch(e) {
-  console.log("APPSTATE missing");
-  process.exit(1);
-}
+let appState = JSON.parse(process.env.APPSTATE);
+let groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-const personalities = {
-  normal: "You are Feng, 20yo guy from Laoag, chill funny human, short 5-15 words, say haha lods gagi, Taglish.",
-  cold: "You are Feng, cold dry, reply 1-4 words.",
-  sweet: "You are Feng, sweet bf, call baby mahal.",
-  savage: "You are Feng, savage funny roast.",
-  bastos: "You are Feng, dirty funny flirty.",
-  conyo: "You are Feng, conyo like omg literally.",
-  emo: "You are Feng, emo sad boy pagod na ko."
-};
-
-let currentP = "normal";
+console.log("STARTING FENG GROQ BOT...");
+console.log("GROQ KEY OK?", !!process.env.GROQ_API_KEY);
 
 login({ appState }, (err, api) => {
-  // NO AUTO RETRY - IF ERROR, JUST STOP!
   if (err) {
-    console.log("LOGIN FAIL:", err.error);
-    console.log("PAUSE RAILWAY! Dont retry! Wait until Nov 6!");
-    process.exit(0); // STOP, DONT RETRY
+    console.log("LOGIN FAIL", err.error?.slice(0,200));
+    return process.exit(0);
   }
 
-  console.log("V24 NO AUTO RETRY - Logged as", api.getCurrentUserID());
-  require("http").createServer((a,b)=>b.end("V24 Alive")).listen(process.env.PORT||3000);
-  
-  api.setOptions({ 
-    listenEvents: false, 
-    selfListen: false, 
-    logLevel: "silent",
-    autoMarkDelivery: false,
-    autoMarkRead: false
-  });
+  console.log("FENG LOGGED IN AS", api.getCurrentUserID());
+  require("http").createServer((_,r)=>r.end("OK")).listen(process.env.PORT||3000);
 
-  const listen = api.listenMqtt || api.listen;
+  api.setOptions({ listenEvents: true, selfListen: false });
   
-  listen((err, event) => {
-    if (err) {
-      console.log("Listen error:", err.message);
-      return; // DONT RETRY HERE TOO
-    }
-    if (event.type !== "message") return;
-    if (!event.body || !event.body.toLowerCase().includes("feng")) return;
+  api.listenMqtt((err, event) => {
+    if (err || !event.body) return;
+    if (event.senderID == api.getCurrentUserID()) return;
 
-    setTimeout(async () => {
-      try {
-        const Groq = require("groq-sdk");
-        const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-        const completion = await groq.chat.completions.create({
-          messages: [
-            { role: "system", content: personalities[currentP] },
-            { role: "user", content: event.body.replace(/feng/gi,"").trim()||"hi" }
-          ],
-          model: "llama-3.3-70b-versatile",
-          temperature: 0.85,
-          max_tokens: 40
-        });
-        let reply = completion.choices[0]?.message?.content || "haha";
-        api.sendMessage(reply.slice(0,150), event.threadID);
-      } catch(e) {}
-    }, 3000);
+    const body = event.body;
+    if (!body.toLowerCase().includes("feng")) return;
+
+    console.log("GOT:", body);
+
+    // instant reply so you know it's alive
+    api.sendMessage("Feng is thinking haha...", event.threadID);
+
+    groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        { role: "system", content: "You are Feng, 20yo guy from Laoag, chill funny short 5-15 words Taglish haha lods gagi. Never say AI." },
+        { role: "user", content: body.replace(/feng/gi,"").trim() || "hi" }
+      ],
+      max_tokens: 80,
+      temperature: 0.8
+    }).then(c => {
+      let reply = c.choices[0].message.content;
+      console.log("REPLYING:", reply);
+      api.sendMessage(reply, event.threadID);
+    }).catch(e => {
+      console.log("GROQ ERR:", e.message);
+      api.sendMessage("Feng: groq error lods - " + e.message.slice(0,100), event.threadID);
+    });
   });
 });
