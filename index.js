@@ -3,74 +3,89 @@ const login=require("ws3-fca");
 
 let appState;
 try{
-if(process.env.APPSTATE){
-appState=JSON.parse(process.env.APPSTATE);
-console.log("Using APPSTATE Railway");
-}else{
-appState=JSON.parse(fs.readFileSync(path.join(__dirname,"appstate.json"),"utf8"));
-}
-}catch(e){console.error("Appstate error",e);}
+if(process.env.APPSTATE) appState=JSON.parse(process.env.APPSTATE);
+else appState=JSON.parse(fs.readFileSync(path.join(__dirname,"appstate.json"),"utf8"));
+}catch(e){}
 
 login({appState},(err,api)=>{
 if(err){console.error(err);return;}
-console.log("Emperor V2 - Gemini 3.8 Ready!");
-require("http").createServer((a,b)=>b.end("V2 Alive")).listen(process.env.PORT||3000);
+console.log("Emperor V4 - Only Reply Mode!");
+require("http").createServer((a,b)=>b.end("V4")).listen(process.env.PORT||3000);
 api.setOptions({listenEvents:true,selfListen:false});
+const botID=api.getCurrentUserID();
 
 api.listen(async(err,event)=>{
 if(err)return;
-if(event.type!=="message"&&event.type!=="message_reply")return;
+if(event.type!=="message" && event.type!=="message_reply")return;
 let body=(event.body||"").trim();
-if(!body||event.senderID==api.getCurrentUserID())return;
+if(!body)return;
+if(event.senderID==botID)return; // don't reply to self
 
-const args=body.split(" ");
-const cmd=args[0].toLowerCase();
+// === ONLY REPLY LOGIC ===
+const lower=body.toLowerCase();
+const isFeng=lower.includes("feng");
+const isReplyToBot=event.type==="message_reply";
 
-// COMMANDS
-if(cmd=="!help"||cmd=="!menu"||cmd=="!cmd"){
-return api.sendMessage(`👑 EMPEROR BOT - Gemini 3.8 Flash 👑
+let shouldReply=false;
 
-Commands:
-!help - show this menu
-!ai [question] - ask AI
-!clear - clear chat (admin)
-
-Just type anything and AI will reply!
-
-Examples:
-what's 1+1
-who is president of PH
-write me a poem
-`,event.threadID,event.messageID);
+// Check if reply is to bot
+if(isReplyToBot){
+// ws3-fca has messageReply info
+if(event.messageReply && event.messageReply.senderID==botID){
+shouldReply=true;
+console.log("Reply to bot detected!");
+}else{
+// If we can't check senderID, treat any reply as trigger (you can make it strict later)
+shouldReply=true;
+}
 }
 
-if(cmd=="!ai"){
-body=args.slice(1).join(" ");
-if(!body)return api.sendMessage("Use: !ai what is 1+1",event.threadID);
+if(isFeng){
+shouldReply=true;
+console.log("Feng trigger detected!");
+}
+
+// If not triggered, IGNORE
+if(!shouldReply){
+console.log("Ignored:",body.slice(0,20));
+return;
+}
+
+// Remove "feng" word from question to make AI answer cleaner
+let prompt=body.replace(/feng/gi,"").trim();
+if(!prompt) prompt="hi";
+
+if(prompt.toLowerCase()=="!help"){
+return api.sendMessage(`👑 FENG BOT 👑
+Only replies when:
+1. You reply to my message
+2. You say "feng"
+
+Try: reply to this or type "feng what's 1+1"`,event.threadID);
 }
 
 try{
 const {GoogleGenerativeAI}=require("@google/generative-ai");
 const genAI=new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model=genAI.getGenerativeModel({
-model:"gemini-3.8-flash",
-systemInstruction:"You are Emperor Bot, a helpful funny AI. Answer short and direct. If asked 1+1 say 2. Don't say 'How can I help you today' every time, just answer the question."
-});
-const result=await model.generateContent(body);
-let text=result.response.text();
-if(!text)text="Hi! Ask me anything!";
-api.sendMessage(text,event.threadID,event.messageID);
+const models=["gemini-2.0-flash","gemini-3.5-flash","gemini-1.5-flash-latest","gemini-2.5-flash"];
+let reply="";
+
+for(const m of models){
+try{
+console.log("Trying",m,"for:",prompt);
+const model=genAI.getGenerativeModel({model:m});
+const result=await model.generateContent(prompt);
+reply=result.response.text();
+if(reply)break;
+}catch(e){continue;}
+}
+
+if(!reply) reply="Google busy, try again later master!";
+api.sendMessage(reply,event.threadID,event.messageID);
+
 }catch(e){
 console.log(e.message);
-try{
-const {GoogleGenerativeAI}=require("@google/generative-ai");
-const genAI=new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model=genAI.getGenerativeModel({model:"gemini-3.5-flash"});
-const r=await model.generateContent(body);
-api.sendMessage(r.response.text(),event.threadID,event.messageID);
-}catch(e2){
-api.sendMessage("Error: "+e.message,event.threadID);
-}
+api.sendMessage("Error: "+e.message.slice(0,100),event.threadID);
 }
 });
 });
