@@ -1,9 +1,9 @@
 {
   "name": "emperor",
   "version": "6.0.0",
-  "main": "emperor/index.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node emperor/index.js"
+    "start": "node index.js"
   },
   "dependencies": {
     "ws3-fca": "latest",
