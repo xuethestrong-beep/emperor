@@ -1,18 +1,15 @@
 {
-  "name": "feng-bot",
+  "name": "emperor",
   "version": "6.0.0",
-  "main": "index.js",
+  "main": "emperor/index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node emperor/index.js"
   },
   "dependencies": {
-    "ws3-fca": "latest",
-    "fca-unofficial": "latest",
-    "groq-sdk": "latest",
-    "fs-extra": "latest",
-    "axios": "latest",
-    "canvas": "latest",
-    "jimp": "latest",
-    "moment-timezone": "latest"
+    "fca-unofficial": "github:lawman2021/fca-unofficial-force",
+    "groq-sdk": "^0.7.0",
+    "fs-extra": "^11.1.1",
+    "axios": "^1.6.0",
+    "request": "^2.88.2"
   }
 }
