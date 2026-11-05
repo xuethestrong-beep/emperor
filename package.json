@@ -6,9 +6,10 @@
     "start": "node emperor/index.js"
   },
   "dependencies": {
-    "f3ca": "^1.0.0",
-    "ws3-fca": "^1.4.1",
+    "ws3-fca": "latest",
+    "@dongdev/fca-unofficial": "latest",
     "groq-sdk": "^0.7.0",
-    "axios": "^1.6.0"
+    "axios": "^1.6.0",
+    "fs-extra": "^11.1.1"
   }
 }
