@@ -1,9 +1,13 @@
 {
-  "name":"feng-bot",
-  "main":"index.js",
-  "dependencies":{
-    "groq-sdk":"latest",
-    "ws3-fca":"latest",
-    "fca-unofficial":"latest"
+  "name": "feng-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "fca-unofficial": "latest",
+    "ws3-fca": "latest",
+    "groq-sdk": "latest"
   }
 }
