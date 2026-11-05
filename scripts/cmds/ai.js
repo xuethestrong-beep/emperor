@@ -1,25 +1,21 @@
 const Groq = require("groq-sdk");
-
-module.exports.config = {
-  name: "ai",
-  version: "1.0",
-  author: "Feng",
-  role: 0
-};
-
+module.exports.config = { name: "ai", version: "2.0" };
 module.exports.onStart = async ({ api, event, args }) => {
+  const key = process.env.GROQ_API_KEY;
+  if(!key) return api.sendMessage("❌ GROQ_API_KEY not set in Railway!", event.threadID, event.messageID);
+  
   let prompt = args.join(" ");
-  if(!prompt) return api.sendMessage("Use: !ai hi", event.threadID, event.messageID);
+  if(!prompt) return api.sendMessage("Use: !ai what is love?", event.threadID, event.messageID);
   
   try{
-    const groq = new Groq({apiKey: process.env.GROQ_API_KEY});
+    const groq = new Groq({ apiKey: key });
     const res = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
       messages: [{role:"user", content: prompt}],
-      max_tokens: 300
+      max_tokens: 500
     });
     api.sendMessage(res.choices[0].message.content, event.threadID, event.messageID);
   }catch(e){
-    api.sendMessage("❌ Error: " + e.message, event.threadID, event.messageID);
+    api.sendMessage(`❌ ${e.message}`, event.threadID, event.messageID);
   }
 };
