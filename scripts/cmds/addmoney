@@ -1,0 +1,78 @@
+const fs = require("fs");
+const path = require("path");
+const BANK_FILE = path.join(__dirname, "bank.json");
+
+function loadBank() {
+  if (!fs.existsSync(BANK_FILE)) return {};
+  try { return JSON.parse(fs.readFileSync(BANK_FILE)); } catch { return {}; }
+}
+function saveBank(data) { fs.writeFileSync(BANK_FILE, JSON.stringify(data, null, 2)); }
+
+module.exports.config = {
+  name: "addmoney",
+  version: "1.0 ADMIN",
+  role: 2, // 2 = Admin only (GoatBot)
+  description: "Add money admin only",
+  usage: "!addmoney @user amount"
+};
+
+module.exports.onStart = async ({ api, event, args }) => {
+  const ADMIN_ID = "61593117279214"; // YOUR ID MASTER
+  
+  // Double check admin - extra security
+  if (event.senderID !== ADMIN_ID) {
+    return api.sendMessage("❌ Admin only! You are not my Master Laoag!", event.threadID, event.messageID);
+  }
+
+  const threadID = event.threadID;
+  let targetID = null;
+  let amount = null;
+
+  // Check if reply or tag
+  if (event.type === "message_reply") {
+    targetID = event.messageReply.senderID;
+    amount = parseInt(args[0]);
+  } else if (Object.keys(event.mentions).length > 0) {
+    targetID = Object.keys(event.mentions)[0];
+    amount = parseInt(args[1]);
+  } else {
+    // addmoney 615931... 5000
+    targetID = args[0];
+    amount = parseInt(args[1]);
+  }
+
+  if (!targetID || isNaN(amount)) {
+    return api.sendMessage(
+`💰 ADD MONEY ADMIN ONLY
+Master Laoag only!
+
+Use:
+!addmoney @user 5000
+!addmoney reply 5000 (reply to user)
+!addmoney 61593117279214 5000
+
+To remove: !addmoney @user -500`,
+      threadID, event.messageID
+    );
+  }
+
+  const bank = loadBank();
+  if (!bank[targetID]) bank[targetID] = { wallet: 1000, bank: 0, lastDaily: 0, lastWork: 0, lastInterest: Date.now() };
+  
+  bank[targetID].wallet += amount;
+  if (bank[targetID].wallet < 0) bank[targetID].wallet = 0;
+  
+  saveBank(bank);
+
+  return api.sendMessage(
+`✅ ADMIN ADDED MONEY!
+
+Target: ${targetID}
+Amount: ${amount > 0 ? `+$${amount}` : `-$${Math.abs(amount)}`}
+New Wallet: $${bank[targetID].wallet}
+New Total: $${bank[targetID].wallet + bank[targetID].bank}
+
+Done by Master ${ADMIN_ID}`,
+    threadID, event.messageID
+  );
+};
