@@ -2,22 +2,22 @@ const fs = require("fs");
 const path = require("path");
 const http = require("http");
 
-// ============ LOAD APPSTATE FROM RAILWAY VARIABLE ============
+// ============ LOAD APPSTATE FROM RAILWAY ============
 let appState;
 try {
   if (process.env.APPSTATE) {
-    console.log("[TENGSAMA] Using APPSTATE from Railway Variable - SAFE & HIDDEN");
+    console.log("[TENGSAMA] Using APPSTATE from Railway Variable - SAFE");
     const decoded = Buffer.from(process.env.APPSTATE, 'base64').toString('utf8');
     appState = JSON.parse(decoded);
   } else if (fs.existsSync(path.join(__dirname, "appstate.json"))) {
-    console.log("[TENGSAMA] Using appstate.json file - WARNING: Use Railway Variable!");
+    console.log("[TENGSAMA] Using appstate.json file");
     appState = JSON.parse(fs.readFileSync(path.join(__dirname, "appstate.json"), "utf8"));
   } else {
-    console.error("[ERROR] No appstate found! Set APPSTATE in Railway Variables!");
+    console.error("[ERROR] No appstate! Set APPSTATE in Railway Variables!");
     process.exit(1);
   }
 } catch (e) {
-  console.error("[ERROR] Failed to parse appstate:", e.message);
+  console.error("[ERROR] Parse appstate failed:", e.message);
   process.exit(1);
 }
 
@@ -27,27 +27,31 @@ try {
   login = require("fca-unofficial");
   console.log("[LIB] Using fca-unofficial");
 } catch {
-  try {
-    login = require("ws3-fca");
-    console.log("[LIB] Using ws3-fca fallback");
-  } catch {
-    login = require("@dongdev/fca-unofficial");
-    console.log("[LIB] Using @dongdev/fca-unofficial");
-  }
+  login = require("ws3-fca");
+  console.log("[LIB] Using ws3-fca");
 }
 
-let apiInstance = null;
+// ============ GROQ SETUP ============
+let groqClient = null;
+try {
+  const Groq = require("groq-sdk");
+  if (process.env.GROQ_API_KEY) {
+    groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    console.log("[GROQ] Groq AI Enabled! Key found!");
+  } else {
+    console.log("[GROQ] No GROQ_API_KEY in Railway! AI will use fallback!");
+  }
+} catch (e) {
+  console.log("[GROQ] groq-sdk not installed yet, will install on deploy");
+}
+
 let retryCount = 0;
 const MAX_RETRY = 20;
 const cmds = {};
 
-// ============ LOAD ALL COMMANDS ============
 function loadCommands() {
   const cmdsPath = path.join(__dirname, "scripts/cmds");
-  if (!fs.existsSync(cmdsPath)) {
-    console.log("[ERROR] scripts/cmds folder not found!");
-    return;
-  }
+  if (!fs.existsSync(cmdsPath)) return;
   const files = fs.readdirSync(cmdsPath);
   let loaded = 0;
   files.forEach(file => {
@@ -59,9 +63,7 @@ function loadCommands() {
       if (cmd.config && cmd.config.name) {
         cmds[cmd.config.name.toLowerCase()] = cmd;
         if (cmd.config.aliases) {
-          cmd.config.aliases.forEach(alias => {
-            cmds[alias.toLowerCase()] = cmd;
-          });
+          cmd.config.aliases.forEach(a => cmds[a.toLowerCase()] = cmd);
         }
         console.log(`✅ DONE !${cmd.config.name}`);
         loaded++;
@@ -70,94 +72,77 @@ function loadCommands() {
       console.log(`❌ FAIL ${file}: ${e.message}`);
     }
   });
-  console.log(`[TENGSAMA] LOADED ${loaded} CMDS - FENG UNIVERSAL INDEX`);
+  console.log(`[TENGSAMA] LOADED ${loaded} CMDS`);
 }
 
-// ============ START BOT ============
 function startBot() {
-  console.log(`\n[TENGSAMA] Starting bot... Attempt ${retryCount + 1}/${MAX_RETRY}`);
-  console.log(`[TIME] ${new Date().toLocaleString("en-PH", { timeZone: "Asia/Manila" })}`);
-
+  console.log(`\n[TENGSAMA] Starting... Attempt ${retryCount + 1}/${MAX_RETRY}`);
   loadCommands();
 
-  login({ appState: appState, selfListen: false, autoMarkRead: true }, (err, api) => {
+  login({ appState: appState, selfListen: false }, (err, api) => {
     if (err) {
-      console.error("[LOGIN FAILED]", err.error || err.message || err);
-      console.error("[INFO] Your appstate is expired or Facebook blocked Railway IP!");
+      console.error("[LOGIN FAIL]", err.error || err.message || err);
       retryCount++;
       if (retryCount < MAX_RETRY) {
-        console.log(`[RETRY] Waiting 30 seconds... (${retryCount}/${MAX_RETRY})`);
-        setTimeout(startBot, 30000);
-      } else {
-        console.log("[FATAL] Max retry reached! Get new appstate!");
-        setTimeout(() => process.exit(1), 5000);
+        console.log(`[RETRY] 30 sec... (${retryCount}/${MAX_RETRY})`);
+        return setTimeout(startBot, 30000);
       }
-      return;
+      return setTimeout(() => process.exit(1), 5000);
     }
 
     console.log("\n╔════════════════════════╗");
-    console.log("║ ✅ TENGSAMA BOT ONLINE! ║");
+    console.log("║ ✅ TENGSAMA BOT ONLINE ║");
+    console.log(`║ 🤖 GROQ: ${groqClient ? "READY" : "NO KEY"}         ║`);
     console.log("╚════════════════════════╝\n");
-    apiInstance = api;
     retryCount = 0;
 
-    api.setOptions({
-      listenEvents: true,
-      selfListen: false,
-      autoMarkRead: false,
-      autoMarkDelivery: true
-    });
+    api.setOptions({ listenEvents: true, selfListen: false });
 
-    // ============ LISTEN ============
-    const listener = api.listenMqtt((err, event) => {
+    api.listenMqtt((err, event) => {
       if (err) {
         console.error("[LISTEN ERR]", err.message || err);
-        console.log("[RECONNECT] MQTT disconnected, restarting in 10 sec...");
+        console.log("[RECONNECT] 10 sec...");
         try { api.removeAllListeners(); } catch {}
-        setTimeout(startBot, 10000);
-        return;
+        return setTimeout(startBot, 10000);
       }
 
       try {
-        // Handle commands with prefix
         if (event.type === "message" || event.type === "message_reply") {
           const body = event.body || "";
           if (!body) return;
-
-          // Check if it's a command
           const prefix = "!";
+          
+          // Inject groq client to all commands
+          const extra = { groq: groqClient };
+
           if (body.startsWith(prefix)) {
             const args = body.slice(prefix.length).trim().split(/ +/);
             const cmdName = args.shift().toLowerCase();
             if (cmds[cmdName] && cmds[cmdName].onStart) {
-              console.log(`[CMD] !${cmdName} by ${event.senderID} in ${event.threadID}`);
-              cmds[cmdName].onStart({ api, event, args, body });
+              console.log(`[CMD] !${cmdName}`);
+              cmds[cmdName].onStart({ api, event, args, body, ...extra });
             }
           } else {
-            // No prefix handling for master
+            if (cmds["noprefix"] && cmds["noprefix"].onChat) {
+              cmds["noprefix"].onChat({ api, event, groq: groqClient });
+            }
+            // Allow ai without prefix for master
             const args = body.trim().split(/ +/);
             const cmdName = args[0].toLowerCase();
-            // Trigger noprefix handler
-            if (cmds["noprefix"] && cmds["noprefix"].onChat) {
-              cmds["noprefix"].onChat({ api, event });
-            }
-            // Also try direct no prefix if user is master
-            if (cmds[cmdName] && ["61593117279214"].includes(event.senderID)) {
+            if (event.senderID === "61593117279214" && cmds[cmdName]) {
               const cmdArgs = args.slice(1);
               if (cmds[cmdName].onStart) {
-                console.log(`[CMD-NOPREFIX] ${cmdName} by MASTER`);
-                cmds[cmdName].onStart({ api, event, args: cmdArgs, body });
+                cmds[cmdName].onStart({ api, event, args: cmdArgs, body, ...extra });
               }
             }
           }
         }
 
-        // Handle events (welcome, antiout, etc)
-        if (event.logMessageType || event.type === "event" || event.type === "log:subscribe" || event.type === "log:unsubscribe") {
+        if (event.logMessageType || event.type === "event") {
           Object.values(cmds).forEach(cmd => {
             try {
-              if (cmd.onChat) cmd.onChat({ api, event });
-              if (cmd.onEvent) cmd.onEvent({ api, event });
+              if (cmd.onChat) cmd.onChat({ api, event, groq: groqClient });
+              if (cmd.onEvent) cmd.onEvent({ api, event, groq: groqClient });
             } catch {}
           });
         }
@@ -168,39 +153,20 @@ function startBot() {
   });
 }
 
-// ============ KEEP ALIVE & AUTO RESTART ============
-process.on("unhandledRejection", (reason) => {
-  console.error("[FATAL] Unhandled Rejection:", reason);
-  console.log("[RESTART] Forcing exit to trigger Railway restart in 3 sec...");
+process.on("unhandledRejection", (r) => {
+  console.error("[FATAL]", r);
   setTimeout(() => process.exit(1), 3000);
 });
 
-process.on("uncaughtException", (err) => {
-  console.error("[FATAL] Uncaught Exception:", err.message);
-  console.log("[RESTART] Forcing exit...");
-  setTimeout(() => process.exit(1), 3000);
-});
-
-// Keep alive log every 3 mins
 setInterval(() => {
-  console.log(`[ALIVE] TENGSAMA BOT RUNNING - ${new Date().toLocaleTimeString("en-PH", { timeZone: "Asia/Manila" })} - Uptime: ${Math.floor(process.uptime()/60)} mins`);
+  console.log(`[ALIVE] ${new Date().toLocaleTimeString("en-PH", {timeZone: "Asia/Manila"})} - ${Math.floor(process.uptime()/60)} mins - GROQ: ${groqClient ? "ON" : "OFF"}`);
 }, 180000);
 
-// ============ WEB SERVER FOR RAILWAY ============
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { "Content-Type": "text/html" });
-  res.end(`
-    <h1>✅ TENGSAMA BOT IS ALIVE! 👍🏿</h1>
-    <p>Time: ${new Date().toLocaleString("en-PH", { timeZone: "Asia/Manila" })}</p>
-    <p>Uptime: ${Math.floor(process.uptime()/60)} minutes</p>
-    <p>Commands: ${Object.keys(cmds).length}</p>
-    <p>Owner: MASTER TENGSAMA</p>
-  `);
+http.createServer((req,res) => {
+  res.writeHead(200, {"Content-Type":"text/html"});
+  res.end(`<h1>✅ TENGSAMA ALIVE! GROQ: ${groqClient ? "READY" : "NO KEY"} 👍🏿</h1><p>Uptime: ${Math.floor(process.uptime()/60)} mins</p>`);
+}).listen(process.env.PORT || 3000, () => {
+  console.log(`[WEB] Server on ${process.env.PORT || 3000}`);
 });
 
-server.listen(process.env.PORT || 3000, () => {
-  console.log(`[WEB] Keep alive server running on port ${process.env.PORT || 3000}`);
-});
-
-// ============ START ============
 startBot();
