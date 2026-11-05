@@ -6,10 +6,9 @@
     "start": "node emperor/index.js"
   },
   "dependencies": {
-    "fca-unofficial": "github:lawman2021/fca-unofficial-force",
+    "f3ca": "^1.0.0",
+    "ws3-fca": "^1.4.1",
     "groq-sdk": "^0.7.0",
-    "fs-extra": "^11.1.1",
-    "axios": "^1.6.0",
-    "request": "^2.88.2"
+    "axios": "^1.6.0"
   }
 }
