@@ -13,10 +13,11 @@ try {
   } else if (fs.existsSync(path.join(__dirname, "appstate.json"))) {
     appState = JSON.parse(fs.readFileSync(path.join(__dirname, "appstate.json"), "utf8"));
   } else { process.exit(1); }
-} catch (e) { console.error("[FAIL]", e.message); process.exit(1); }
+} catch (e) { process.exit(1); }
 
 let login;
-try { login = require("@dongdev/fca-unofficial"); } catch { login = require("ws3-fca"); }
+try { login = require("@dongdev/fca-unofficial"); } 
+catch { login = require("ws3-fca"); }
 
 let groqClient = null;
 try { const Groq = require("groq-sdk"); if (process.env.GROQ_API_KEY) groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY }); } catch {}
@@ -39,38 +40,24 @@ function loadCommands() {
   });
 }
 
-const ADMIN_IDS = ["61593117279214"]; // Your owner UID from screenshot!
+const ADMIN_IDS = ["61593117279214", "61595947850770"];
+
 function isAdmin(s) { return ADMIN_IDS.includes(String(s)); }
-function isAdminOnlyEnabled() {
-  try {
-    const p = path.join(__dirname, "scripts/cmds/cache/adminonly.json");
-    if (fs.existsSync(p)) {
-      const d = JSON.parse(fs.readFileSync(p, "utf8"));
-      if (d.enabled || d.on || d.status) return true;
-    }
-  } catch {}
-  return false;
-}
 
 function startBot() {
   loadCommands();
   login({ appState, selfListen: false }, (err, api) => {
-    if (err) { console.error("[FAIL]", err.message); return setTimeout(startBot, 30000); }
-    console.log("✅ TENGTENG ONLINE! 👑");
+    if (err) { console.error("[LOGIN FAIL]", err.message); return setTimeout(startBot, 30000); }
+    console.log("✅ TENGTENG ONLINE! 😆 REACT FIXED WITH THREADID!");
 
-    // ===== OWNER NAME OVERRIDE - CHANGE TENGSAMA TO TENGTENG =====
-    const originalSend = api.sendMessage;
-    api.sendMessage = function(msg, threadID, callback, messageID) {
+    const origSend = api.sendMessage;
+    api.sendMessage = function(m, t, cb, mid) {
       try {
-        if (typeof msg === "string") {
-          msg = msg.replace(/TENGSAMA/g, "TENGTENG👍🏿");
-        } else if (msg && typeof msg.body === "string") {
-          msg.body = msg.body.replace(/TENGSAMA/g, "TENGTENG👍🏿");
-        }
+        if (typeof m === "string") m = m.replace(/TENGSAMA/g, "TENGTENG👍🏿");
+        else if (m?.body) m.body = m.body.replace(/TENGSAMA/g, "TENGTENG👍🏿");
       } catch {}
-      return originalSend.call(this, msg, threadID, callback, messageID);
+      return origSend.call(this, m, t, cb, mid);
     };
-    // ===== END OVERRIDE =====
 
     api.setOptions({ listenEvents: true, selfListen: false });
     api.listenMqtt((err, event) => {
@@ -80,13 +67,25 @@ function startBot() {
       }
       try {
         if (event.type === "message" || event.type === "message_reply") {
-          let body = (event.body || "").trim();
-          if (!body) return;
-          const senderID = event.senderID;
+          const body = (event.body || "").trim();
+          const senderID = String(event.senderID || "");
+          const threadID = event.threadID;
+          const messageID = event.messageID;
+          if (!body || !messageID) return;
+
           const isAdminUser = isAdmin(senderID);
 
+          // ===== FIXED: NEED threadID NOW =====
           if (isAdminUser) {
-            try { api.setMessageReaction("😆", event.messageID, () => {}, true); } catch {}
+            try {
+              // CORRECT WAY: reaction, messageID, threadID
+              api.setMessageReaction("😆", messageID, threadID, (err) => {
+                if (err) console.log("[REACT FAIL]", err.error || err.message);
+                else console.log(`[REACT OK] 😆 to ${senderID}`);
+              });
+            } catch (e) {
+              console.log("[REACT ERROR]", e.message);
+            }
           }
 
           let commandName = null, args = [], isCommand = false;
@@ -102,15 +101,12 @@ function startBot() {
           }
 
           if (isCommand && commandName) {
-            if (isAdminOnlyEnabled() && commandName !== "adminonly" && commandName !== "admin") {
-              if (!isAdminUser) return api.sendMessage(`❌ ACCESS DENIED ||\nOnly Master TENGTENG👍🏿 can use this.`, event.threadID);
-            }
             if (cmds[commandName]?.onStart) cmds[commandName].onStart({ api, event, args, body, groq: groqClient });
           } else {
             if (cmds["noprefix"]?.onChat) cmds["noprefix"].onChat({ api, event, groq: groqClient });
           }
         }
-      } catch {}
+      } catch (e) { console.log("[EVENT ERROR]", e.message); }
     });
   });
 }
