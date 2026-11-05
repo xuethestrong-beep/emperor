@@ -13,10 +13,27 @@ try {
     appState = JSON.parse(fs.readFileSync(path.join(__dirname, "appstate.json"), "utf8"));
   } else { process.exit(1); }
 } catch { process.exit(1); }
+
+// ===== FIXED LOGIN IMPORT - SUPPORT ALL LIBS =====
 let login;
-try { login = require("ws3-fca"); } catch { login = require("@dongdev/fca-unofficial"); }
+try {
+  const mod = require("ws3-fca");
+  login = mod.login || mod.default || mod;
+  console.log("[LIB] Using ws3-fca");
+} catch {
+  try {
+    const mod = require("@dongdev/fca-unofficial");
+    login = mod.login || mod.default || mod;
+    console.log("[LIB] Using @dongdev/fca-unofficial");
+  } catch {
+    const mod = require("fca-unofficial");
+    login = mod.login || mod.default || mod;
+  }
+}
+
 let groqClient = null;
 try { const Groq = require("groq-sdk"); if (process.env.GROQ_API_KEY) groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY }); } catch {}
+
 const cmds = {};
 function loadCommands() {
   const p = path.join(__dirname, "scripts/cmds");
@@ -34,9 +51,11 @@ function loadCommands() {
     } catch {}
   });
 }
+
 const MAIN_ADMIN = "61593117279214";
 const ADMIN_IDS = [MAIN_ADMIN, "61595947850770"];
 function isAdmin(s) { return ADMIN_IDS.includes(String(s)); }
+
 function isDisabled(cmdName) {
   try {
     const p = path.join(__dirname, "scripts/cmds/cache/disabled.json");
@@ -46,6 +65,7 @@ function isDisabled(cmdName) {
     }
   } catch {} return false;
 }
+
 function isAdminOnlyOn() {
   try {
     const p = path.join(__dirname, "scripts/cmds/cache/adminonly.json");
@@ -55,11 +75,21 @@ function isAdminOnlyOn() {
     }
   } catch {} return false;
 }
+
 function startBot() {
   loadCommands();
+  if (typeof login !== "function") {
+    console.error("[FATAL] login is not a function, type:", typeof login);
+    console.error("[FATAL] login value:", Object.keys(login || {}));
+    return setTimeout(startBot, 10000);
+  }
   login({ appState, selfListen: false, online: false }, (err, api) => {
-    if (err) { console.log("[LOGIN FAIL]", err.message); return setTimeout(startBot, 30000); }
-    console.log("✅ TENGTENG👍🏿 ONLINE - LUMA STYLE!");
+    if (err) {
+      console.log("[LOGIN FAIL]", err.error || err.message || err);
+      if (JSON.stringify(err).includes("Server unavailable")) return setTimeout(startBot, 60000);
+      return setTimeout(startBot, 30000);
+    }
+    console.log("✅ TENGTENG👍🏿 ONLINE - TENG TRIGGER!");
     const origSend = api.sendMessage;
     api.sendMessage = function(m, t, cb, mid) {
       try {
@@ -71,7 +101,10 @@ function startBot() {
     api.listenMqtt((err, event) => {
       if (err) {
         if (JSON.stringify(err).includes("1357004")) return;
-        if (JSON.stringify(err).includes("Server unavailable")) { console.log("[MQTT BLOCKED] Retry 60s"); try { api.removeAllListeners(); } catch {} return setTimeout(startBot, 60000); }
+        if (JSON.stringify(err).includes("Server unavailable")) {
+          console.log("[MQTT BLOCKED] Retry 60s");
+          try { api.removeAllListeners(); } catch {} return setTimeout(startBot, 60000);
+        }
         try { api.removeAllListeners(); } catch {} return setTimeout(startBot, 10000);
       }
       try {
@@ -101,8 +134,8 @@ function startBot() {
             if (isDisabled(commandName) && commandName !== "disable") {
               if (!isAdminUser) return api.sendMessage(`❌ Command !${commandName} is DISABLED by Master TENGTENG👍🏿!`, threadID, messageID);
             }
-            if (isAdminOnlyOn() && commandName !== "adminonly" && commandName !== "admin") {
-              if (!isAdminUser) return api.sendMessage(`❌ ADMIN ONLY ON 🔒 Only Master TENGTENG👍🏿 can use!`, threadID, messageID);
+            if (isAdminOnlyOn() && !isAdminUser && commandName !== "adminonly" && commandName !== "admin") {
+              return api.sendMessage(`❌ ADMIN ONLY ON 🔒 Only Master TENGTENG👍🏿 can use!`, threadID, messageID);
             }
             if (cmds[commandName]?.onStart) { try { cmds[commandName].onStart({ api, event, args, body, groq: groqClient }); } catch {} }
           } else {
