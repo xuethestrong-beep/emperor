@@ -35,11 +35,27 @@ function saveDisabled(list) {
   } catch {}
 }
 
+function getAllCommands() {
+  const cmds = [];
+  const p = __dirname;
+  if (fs.existsSync(p)) {
+    fs.readdirSync(p).forEach(f => {
+      if (f.endsWith(".js")) {
+        try {
+          const c = require(path.join(p, f));
+          if (c.config?.name) cmds.push(c.config.name.toLowerCase());
+        } catch {}
+      }
+    });
+  }
+  return cmds;
+}
+
 module.exports.config = {
   name: "disable",
-  aliases: ["offcmd", "enable", "cmdon", "cmdoff"],
-  version: "1.0 TENGTENG👍🏿",
-  role: 2, // Admin only
+  aliases: ["offcmd", "enable"],
+  version: "2.0 TENGTENG👍🏿",
+  role: 2,
   description: "Disable/enable commands - Admin only"
 };
 
@@ -47,58 +63,58 @@ module.exports.onStart = async ({ api, event, args }) => {
   const { threadID, messageID, senderID } = event;
   const admins = loadAdmins();
   
-  // ADMIN ONLY CHECK
   if (senderID != MAIN_ADMIN && !admins.includes(String(senderID))) {
-    return api.sendMessage(`❌ ACCESS DENIED!\nOnly Master TENGTENG👍🏿 can use this!\nOwner: ${MAIN_ADMIN}`, threadID, messageID);
+    return api.sendMessage(`❌ Only Master TENGTENG👍🏿 can use this!`, threadID, messageID);
   }
 
-  const subCommand = args[0]?.toLowerCase();
-  const targetCmd = args[1]?.toLowerCase();
-  
+  const sub = args[0]?.toLowerCase();
+  const target = args[1]?.toLowerCase();
   let disabled = loadDisabled();
-
-  // !disable list
-  if (!subCommand || subCommand === "list") {
-    if (disabled.length === 0) {
-      return api.sendMessage(`✅ No disabled commands!\nAll commands are ENABLED!\n\nMaster: TENGTENG👍🏿`, threadID, messageID);
-    }
-    return api.sendMessage(`📋 DISABLED COMMANDS (${disabled.length}):\n\n${disabled.map(c => `❌ ${c}`).join("\n")}\n\nUse: !disable enable <name> to enable\nMaster: TENGTENG👍🏿`, threadID, messageID);
-  }
-
-  // !disable on/enable <command>
-  if (subCommand === "enable" || subCommand === "on" || args[0] === "enable") {
-    const cmdToEnable = (subCommand === "enable" || subCommand === "on") ? targetCmd : subCommand;
-    if (!cmdToEnable) return api.sendMessage(`❌ Usage: !disable enable <command>\nExample: !disable enable ai`, threadID, messageID);
-    
-    if (!disabled.includes(cmdToEnable)) {
-      return api.sendMessage(`✅ Command !${cmdToEnable} is already ENABLED!`, threadID, messageID);
-    }
-    disabled = disabled.filter(c => c !== cmdToEnable);
-    saveDisabled(disabled);
-    return api.sendMessage(`✅ ENABLED: !${cmdToEnable}\nNow users can use it!\nMaster: TENGTENG👍🏿`, threadID, messageID);
-  }
-
-  // !disable off/disable <command>
-  let cmdToDisable = subCommand;
-  if (subCommand === "disable" || subCommand === "off") {
-    cmdToDisable = targetCmd;
-  }
-  
-  if (!cmdToDisable) {
-    return api.sendMessage(`🔧 DISABLE COMMAND - TENGTENG👍🏿\n\nUsage:\n!disable <command> - Disable a command\n!disable enable <command> - Enable a command\n!disable list - Show disabled list\n\nExample:\n!disable ai\n!disable bank\n!disable enable ai\n\nMaster: TENGTENG👍🏿`, threadID, messageID);
-  }
-
-  // Cannot disable important admin commands
   const protectedCmds = ["disable", "enable", "admin", "adminonly"];
-  if (protectedCmds.includes(cmdToDisable)) {
-    return api.sendMessage(`❌ Cannot disable protected command !${cmdToDisable}!\nProtected: ${protectedCmds.join(", ")}`, threadID, messageID);
+
+  // LIST
+  if (!sub || sub === "list") {
+    if (disabled.length === 0) return api.sendMessage(`✅ All commands ENABLED!\nMaster: TENGTENG👍🏿`, threadID, messageID);
+    return api.sendMessage(`📋 DISABLED (${disabled.length}):\n${disabled.map(c => `❌ ${c}`).join("\n")}\n\n!disable enable all to enable`, threadID, messageID);
   }
 
-  if (disabled.includes(cmdToDisable)) {
-    return api.sendMessage(`❌ Command !${cmdToDisable} is already DISABLED!`, threadID, messageID);
+  // ENABLE
+  if (sub === "enable" || sub === "on") {
+    if (!target) return api.sendMessage(`❌ Usage: !disable enable <command>\nOr !disable enable all`, threadID, messageID);
+    
+    if (target === "all") {
+      saveDisabled([]);
+      return api.sendMessage(`✅ ALL COMMANDS ENABLED!\nMaster: TENGTENG👍🏿`, threadID, messageID);
+    }
+
+    if (!disabled.includes(target)) return api.sendMessage(`✅ !${target} already ENABLED!`, threadID, messageID);
+    disabled = disabled.filter(c => c !== target);
+    saveDisabled(disabled);
+    return api.sendMessage(`✅ ENABLED: !${target}\nMaster: TENGTENG👍🏿`, threadID, messageID);
   }
+
+  // DISABLE
+  let cmdToDisable = sub;
+  if (sub === "disable" || sub === "off") cmdToDisable = target;
+
+  if (!cmdToDisable) {
+    return api.sendMessage(`🔧 DISABLE - TENGTENG👍🏿\n!disable <name> - disable 1\n!disable all - disable ALL\n!disable enable <name> - enable\n!disable enable all - enable ALL\n!disable list`, threadID, messageID);
+  }
+
+  // DISABLE ALL
+  if (cmdToDisable === "all") {
+    const all = getAllCommands().filter(c => !protectedCmds.includes(c));
+    saveDisabled(all);
+    return api.sendMessage(`❌ DISABLED ALL COMMANDS (${all.length})!\n${all.join(", ")}\n\nProtected: disable, admin stay ON\nUse !disable enable all to enable\nMaster: TENGTENG👍🏿`, threadID, messageID);
+  }
+
+  if (protectedCmds.includes(cmdToDisable)) {
+    return api.sendMessage(`❌ Cannot disable !${cmdToDisable} (protected)!`, threadID, messageID);
+  }
+
+  if (disabled.includes(cmdToDisable)) return api.sendMessage(`❌ !${cmdToDisable} already DISABLED!`, threadID, messageID);
 
   disabled.push(cmdToDisable);
   saveDisabled(disabled);
-  return api.sendMessage(`❌ DISABLED: !${cmdToDisable}\nUsers cannot use it now!\nUse !disable enable ${cmdToDisable} to enable again!\nMaster: TENGTENG👍🏿`, threadID, messageID);
+  return api.sendMessage(`❌ DISABLED: !${cmdToDisable}\nUsers cannot use it!\nMaster: TENGTENG👍🏿`, threadID, messageID);
 };
