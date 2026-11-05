@@ -1,5 +1,4 @@
 const Groq = require("groq-sdk");
-
 let login;
 try { 
   let fca = require("ws3-fca");
@@ -7,11 +6,9 @@ try {
 } catch { 
   login = require("fca-unofficial"); 
 }
-
 let appState = JSON.parse(process.env.APPSTATE);
 let groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
-console.log("STARTING FENG V31 REPLY FIX...");
+console.log("FENG V34 NO THINKING...");
 
 login({ appState }, (err, api) => {
   if (err) return process.exit(0);
@@ -25,30 +22,20 @@ login({ appState }, (err, api) => {
 
     const body = event.body || "";
     const isReplyToBot = event.messageReply && event.messageReply.senderID == api.getCurrentUserID();
-    
-    // TRIGGER: contains "feng" OR replying to Feng
-    let shouldReply = body.toLowerCase().includes("feng") || isReplyToBot;
-    if (!shouldReply) return;
-
-    console.log("TRIGGERED by:", isReplyToBot ? "REPLY" : "FENG KEYWORD", body);
-
-    api.sendMessage("Feng is thinking haha...", event.threadID);
+    if (!body.toLowerCase().includes("feng") && !isReplyToBot) return;
 
     groq.chat.completions.create({
-      model: "llama-3.1-8b-instant", // FIXED MODEL!
+      model: "openai/gpt-oss-20b",
       messages: [
-        { role: "system", content: "You are Feng, 20yo guy from Laoag, chill funny short 5-15 words Taglish haha lods gagi. Never say AI." },
+        { role: "system", content: "You are Feng, 20yo guy from Laoag, chill funny short 5-15 words Taglish haha lods. Never say AI." },
         { role: "user", content: body.replace(/feng/gi,"").trim() || "hi" }
       ],
       max_tokens: 80,
       temperature: 0.8
     }).then(c => {
-      let reply = c.choices[0].message.content;
-      console.log("REPLY:", reply);
-      api.sendMessage(reply, event.threadID);
+      api.sendMessage(c.choices[0].message.content, event.threadID);
     }).catch(e => {
-      console.log("GROQ ERR:", e.message);
-      api.sendMessage("Feng error: " + e.message.slice(0,120), event.threadID);
+      api.sendMessage("Error: " + e.message.slice(0,100), event.threadID);
     });
   });
 });
