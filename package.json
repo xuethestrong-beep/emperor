@@ -1,11 +1,9 @@
 {
-  "name": "emperor",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": { "start": "node index.js" },
-  "dependencies": {
-    "ws3-fca": "latest",
-    "fca-unofficial": "latest",
-    "groq-sdk": "^0.23.0"
+  "name":"feng-bot",
+  "main":"index.js",
+  "dependencies":{
+    "groq-sdk":"latest",
+    "ws3-fca":"latest",
+    "fca-unofficial":"latest"
   }
 }
