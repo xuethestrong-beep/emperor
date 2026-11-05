@@ -31,13 +31,17 @@ function getMemory(tid) {
 
 login({ appState }, (err, api) => {
   if (err) return console.error(err);
-  console.log("V18 FIXED - " + currentP);
+  console.log("V19 FIXED LISTEN - " + currentP);
   require("http").createServer((a,b)=>b.end("Alive")).listen(process.env.PORT||3000);
   api.setOptions({ listenEvents: true, selfListen: false, logLevel: "silent" });
   const botID = api.getCurrentUserID();
   process.on("unhandledRejection", e => console.log("Caught", e.message?.slice(0,80)));
 
-  api.listen(async (err, event) => {
+  // FIX FOR LATEST WS3-FCA - listenMqtt
+  const listen = api.listenMqtt || api.listen;
+  console.log("Using listen:", api.listenMqtt ? "listenMqtt" : "listen");
+
+  listen(async (err, event) => {
     try {
       if (err) return;
       if (event.type !== "message" && event.type !== "message_reply") return;
