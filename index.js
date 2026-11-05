@@ -2,51 +2,75 @@ const fs=require("fs"),path=require("path");
 const login=require("ws3-fca");
 
 let appState;
-if(process.env.APPSTATE){
 try{
+if(process.env.APPSTATE){
 appState=JSON.parse(process.env.APPSTATE);
-console.log("Using APPSTATE from Railway - 3.8 Flash!");
-}catch(e){
-appState=JSON.parse(fs.readFileSync(path.join(__dirname,"appstate.json"),"utf8"));
-}
+console.log("Using APPSTATE Railway");
 }else{
 appState=JSON.parse(fs.readFileSync(path.join(__dirname,"appstate.json"),"utf8"));
 }
+}catch(e){console.error("Appstate error",e);}
 
 login({appState},(err,api)=>{
-if(err){console.error("LOGIN FAILED:",err);return;}
-console.log("Emperor Started with Gemini 3.8 Flash!");
-
-require("http").createServer((a,b)=>b.end("Alive 3.8")).listen(process.env.PORT||3000);
+if(err){console.error(err);return;}
+console.log("Emperor V2 - Gemini 3.8 Ready!");
+require("http").createServer((a,b)=>b.end("V2 Alive")).listen(process.env.PORT||3000);
 api.setOptions({listenEvents:true,selfListen:false});
 
 api.listen(async(err,event)=>{
 if(err)return;
 if(event.type!=="message"&&event.type!=="message_reply")return;
-const body=(event.body||"").trim();
-if(!body)return;
+let body=(event.body||"").trim();
+if(!body||event.senderID==api.getCurrentUserID())return;
+
+const args=body.split(" ");
+const cmd=args[0].toLowerCase();
+
+// COMMANDS
+if(cmd=="!help"||cmd=="!menu"||cmd=="!cmd"){
+return api.sendMessage(`👑 EMPEROR BOT - Gemini 3.8 Flash 👑
+
+Commands:
+!help - show this menu
+!ai [question] - ask AI
+!clear - clear chat (admin)
+
+Just type anything and AI will reply!
+
+Examples:
+what's 1+1
+who is president of PH
+write me a poem
+`,event.threadID,event.messageID);
+}
+
+if(cmd=="!ai"){
+body=args.slice(1).join(" ");
+if(!body)return api.sendMessage("Use: !ai what is 1+1",event.threadID);
+}
 
 try{
 const {GoogleGenerativeAI}=require("@google/generative-ai");
 const genAI=new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-// SPECIFIC - NEW MODEL FOR NEW KEYS
-const model=genAI.getGenerativeModel({model:"gemini-3.8-flash"});
+const model=genAI.getGenerativeModel({
+model:"gemini-3.8-flash",
+systemInstruction:"You are Emperor Bot, a helpful funny AI. Answer short and direct. If asked 1+1 say 2. Don't say 'How can I help you today' every time, just answer the question."
+});
 const result=await model.generateContent(body);
-api.sendMessage(result.response.text(),event.threadID,event.messageID);
+let text=result.response.text();
+if(!text)text="Hi! Ask me anything!";
+api.sendMessage(text,event.threadID,event.messageID);
 }catch(e){
-console.log("Error:",e.message);
-// FALLBACK if 3.8 is full
-if(e.message.includes("404")||e.message.includes("3.8")){
+console.log(e.message);
 try{
 const {GoogleGenerativeAI}=require("@google/generative-ai");
-const genAI2=new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model2=genAI2.getGenerativeModel({model:"gemini-3.5-flash"});
-const result2=await model2.generateContent(event.body);
-api.sendMessage(result2.response.text(),event.threadID,event.messageID);
-return;
-}catch(e2){}
-}
+const genAI=new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model=genAI.getGenerativeModel({model:"gemini-3.5-flash"});
+const r=await model.generateContent(body);
+api.sendMessage(r.response.text(),event.threadID,event.messageID);
+}catch(e2){
 api.sendMessage("Error: "+e.message,event.threadID);
+}
 }
 });
 });
