@@ -6,103 +6,98 @@ let appState;
 try {
   if (process.env.APPSTATE) appState = JSON.parse(process.env.APPSTATE);
   else appState = JSON.parse(fs.readFileSync(path.join(__dirname, "appstate.json"), "utf8"));
-} catch (e) {}
+} catch (e) { console.log("No appstate"); }
 
+// PERSONALITIES - SMART HUMAN META
 const personalities = {
-  normal: "You are Feng, 20yo guy from Laoag. Chill friend, funny, casual. 1 sentence, human.",
-  cold: "You are Feng, cold, dry, nonchalant. Super short like 'k', 'ok', 'whatever'.",
-  sweet: "You are Feng, sweet clingy bf, soft, caring, call baby.",
-  savage: "You are Feng, savage, roasts funny.",
-  bastos: "You are Feng, dirty funny tropa, green jokes.",
-  conyo: "You are Feng, conyo rich kid, like omg literally.",
-  emo: "You are Feng, emo sad boy."
+  normal: "You are Feng, 20yo guy from Laoag City, Ilocos. Real human, not AI. Chill, funny, short texting like Messenger. Use haha, lods, gagi sometimes. Taglish. Never say As an AI. 5-15 words only, 1 sentence.",
+  cold: "You are Feng, cold, dry, nonchalant. Reply 1-4 words only: k, ok, whatever, ge, bahala ka. Annoyed, short.",
+  sweet: "You are Feng, sweet clingy bf, soft, caring, call baby, mahal, love, miss u, ingat ka. Short, sweet, human.",
+  savage: "You are Feng, savage tropa, roasts funny but not too toxic. Like bobo mo haha jk.",
+  bastos: "You are Feng, manyak funny friend, green jokes, flirty funny but not explicit.",
+  conyo: "You are Feng, conyo rich kid, like omg literally super as in you know?",
+  emo: "You are Feng, emo sad boy, pagod na ko, life sucks, dramatic but short."
 };
 
 let currentP = "normal";
 const pFile = path.join(__dirname, "p.txt");
-if (fs.existsSync(pFile)) {
-  try { currentP = fs.readFileSync(pFile, "utf8").trim(); } catch (e) {}
+if (fs.existsSync(pFile)) { try { currentP = fs.readFileSync(pFile, "utf8").trim(); } catch(e) {} }
+
+const chatMemory = new Map();
+function getMemory(tid) {
+  if (!chatMemory.has(tid)) chatMemory.set(tid, []);
+  return chatMemory.get(tid);
 }
 
 login({ appState }, (err, api) => {
   if (err) return console.error(err);
-  console.log("V12 FALLBACK - " + currentP);
-  require("http").createServer((a,b)=>b.end("V12")).listen(process.env.PORT||3000);
+  console.log("V17 FINAL GROQ HUMAN - " + currentP);
+  require("http").createServer((a,b)=>b.end("V17 Groq Alive")).listen(process.env.PORT||3000);
   api.setOptions({ listenEvents: true, selfListen: false, logLevel: "silent" });
   const botID = api.getCurrentUserID();
+  process.on("unhandledRejection", e => console.log("Caught", e.message?.slice(0,80)));
 
   api.listen(async (err, event) => {
-    if (err) return;
-    if (event.type !== "message" && event.type !== "message_reply") return;
-    let body = (event.body || "").trim();
-    if (!body || event.senderID == botID) return;
-
-    const lower = body.toLowerCase();
-    const hasFeng = lower.includes("feng");
-    let isReplyToBot = false;
-    if (event.type === "message_reply") isReplyToBot = true;
-    if (!hasFeng && !isReplyToBot) return;
-
-    // PERSONALITY COMMAND
-    if (lower.includes("personality")) {
-      if (lower.includes("list")) {
-        return api.sendMessage("normal cold sweet savage bastos conyo emo\nUse: feng personality cold", event.threadID);
-      }
-      for (const p in personalities) {
-        if (lower.includes(p)) {
-          currentP = p;
-          fs.writeFileSync(pFile, p);
-          return api.sendMessage(`Feng is now ${p} 😈`, event.threadID);
-        }
-      }
-    }
-
-    let prompt = body.replace(/feng/gi, "").trim() || "hi";
-
-    // FALLBACK MODELS - try until one works
-    const modelsToTry = [
-      "gemini-2.0-flash",
-      "gemini-1.5-flash",
-      "gemini-2.5-flash",
-      "gemini-flash-latest",
-      "gemini-3.8-flash"
-    ];
-
     try {
-      const { GoogleGenerativeAI } = require("@google/generative-ai");
-      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-      
-      let replyText = null;
-      let lastError = null;
+      if (err) return;
+      if (event.type !== "message" && event.type !== "message_reply") return;
+      let body = (event.body || "").trim();
+      if (!body || event.senderID == botID) return;
 
-      for (const mName of modelsToTry) {
-        try {
-          console.log("Trying model:", mName);
-          const model = genAI.getGenerativeModel({
-            model: mName,
-            systemInstruction: personalities[currentP] + " RULES: 5-15 words only. 1 sentence. No bold. Human chat. Personality=" + currentP,
-            generationConfig: { temperature: 0.8, maxOutputTokens: 35 }
-          });
-          const result = await model.generateContent(prompt);
-          replyText = result.response.text().replace(/\*\*/g, "");
-          console.log("Success with:", mName);
-          break;
-        } catch (e) {
-          lastError = e.message;
-          console.log(mName + " failed: " + e.message.slice(0,80));
-          continue;
+      const lower = body.toLowerCase();
+      const hasFeng = lower.includes("feng");
+      let isReplyToBot = event.type === "message_reply";
+      if (!hasFeng && !isReplyToBot) return;
+
+      // PERSONALITY COMMAND
+      if (lower.includes("personality")) {
+        if (lower.includes("list")) {
+          await api.sendMessage("Personalities:\nnormal - chill friend\ncold - dry k ok\nsweet - sweet bf\nsavage - roasts\nbastos - dirty funny\nconyo - conyo\nemo - sad boy\n\nUse: feng personality cold", event.threadID).catch(()=>{});
+          return;
+        }
+        for (const p in personalities) {
+          if (lower.includes(p)) {
+            currentP = p;
+            fs.writeFileSync(pFile, p);
+            await api.sendMessage(`Feng is now ${p} 😈`, event.threadID).catch(()=>{});
+            return;
+          }
         }
       }
 
-      if (replyText) {
-        api.sendMessage(replyText, event.threadID, event.messageID);
-      } else {
-        api.sendMessage("Bobo Google 503 parin, wait 1 min try ulit", event.threadID);
-        console.log("All models failed:", lastError);
-      }
+      let prompt = body.replace(/feng/gi, "").trim() || "hi";
+      const mem = getMemory(event.threadID);
+      mem.push(`User: ${prompt}`);
+      if (mem.length > 6) mem.shift();
 
-    } catch (e) {
-      console.log("Error:", e.message.slice(0,150));
-    }
+      try {
+        const Groq = require("groq-sdk");
+        const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+        
+        const completion = await groq.chat.completions.create({
+          messages: [
+            { role: "system", content: personalities[currentP] + ` Recent chat: ${mem.join(" | ")}` },
+            { role: "user", content: prompt }
+          ],
+          model: "llama-3.3-70b-versatile",
+          temperature: 0.85,
+          max_tokens: 45
+        });
+
+        let reply = completion.choices[0]?.message?.content || "haha";
+        reply = reply.replace(/\*\*/g, "").slice(0, 200);
+        
+        mem.push(`Feng: ${reply}`);
+        if (mem.length > 6) mem.shift();
+
+        await api.sendMessage(reply, event.threadID, event.messageID).catch(async () => {
+          await api.sendMessage(reply, event.threadID).catch(()=>{});
+        });
+
+      } catch (e) {
+        console.log("Groq error:", e.message.slice(0,150));
+        await api.sendMessage("gagi lag wait lang haha", event.threadID).catch(()=>{});
+      }
+    } catch (e) { console.log("Loop error", e.message.slice(0,80)); }
   });
 });
