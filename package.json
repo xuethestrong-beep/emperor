@@ -7,7 +7,7 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "ws3-fca": "1.7.10",
+    "ws3-fca": "latest",
     "groq-sdk": "^0.23.0",
     "node-fetch": "^2.6.7",
     "@google/generative-ai": "^0.24.1"
