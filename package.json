@@ -5,7 +5,7 @@
   "type": "commonjs",
   "scripts": { "start": "node index.js" },
   "dependencies": {
-    "fca-unofficial": "8.0.0",
+    "fca-unofficial": "latest",
     "groq-sdk": "^0.23.0",
     "node-fetch": "^2.6.7"
   },
