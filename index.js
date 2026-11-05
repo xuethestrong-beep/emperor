@@ -1,31 +1,18 @@
 const fs = require("fs");
 const path = require("path");
-
-// AUTO FALLBACK - TRY ws3-fca FIRST, THEN fca-unofficial
 let fca, login;
 try {
   fca = require("ws3-fca");
   login = fca.default || fca.login || fca;
-  console.log("Using: ws3-fca");
 } catch(e) {
   fca = require("fca-unofficial");
   login = fca;
-  console.log("Using: fca-unofficial");
 }
 
 let appState;
 try {
-  if (process.env.APPSTATE) {
-    appState = JSON.parse(process.env.APPSTATE);
-    console.log("APPSTATE from Railway ENV:", appState.length, "cookies");
-  } else {
-    appState = JSON.parse(fs.readFileSync(path.join(__dirname, "appstate.json"), "utf8"));
-    console.log("APPSTATE from file:", appState.length, "cookies");
-  }
-} catch (e) {
-  console.log("APPSTATE ERROR:", e.message);
-  process.exit(1);
-}
+  appState = JSON.parse(process.env.APPSTATE);
+} catch(e) { console.log("APPSTATE ERROR"); process.exit(1); }
 
 const personalities = {
   normal: "You are Feng, 20yo guy from Laoag, chill funny human, short 5-15 words, say haha lods gagi, Taglish, never say As an AI.",
@@ -41,77 +28,53 @@ let currentP = "normal";
 const pFile = path.join(__dirname, "p.txt");
 if (fs.existsSync(pFile)) { try { currentP = fs.readFileSync(pFile, "utf8").trim(); } catch(e) {} }
 
-const chatMemory = new Map();
-function getMemory(tid) {
-  if (!chatMemory.has(tid)) chatMemory.set(tid, []);
-  return chatMemory.get(tid);
-}
-
 function startBot() {
 login({ appState }, (err, api) => {
   if (err) {
-    console.log("LOGIN ERROR:", JSON.stringify(err).slice(0,500));
-    if (err.error && err.error.includes("retrieving userID")) {
-      console.log(">>> APPSTATE EXPIRED! Get new APPSTATE from Firefox! <<<");
-    }
-    setTimeout(startBot, 15000);
-    return;
+    console.log("LOGIN FAIL - WAIT 24H!:", err.error?.slice(0,200));
+    return; // DONT AUTO RETRY WHEN BANNED!
   }
-  console.log("V22 SUCCESS - Logged as:", api.getCurrentUserID(), "- Personality:", currentP);
-  require("http").createServer((a,b)=>b.end("Feng Alive V22")).listen(process.env.PORT||3000);
-  api.setOptions({ listenEvents: true, selfListen: false, logLevel: "silent" });
-  const botID = api.getCurrentUserID();
+  console.log("V23 ANTI-BAN - Logged as", api.getCurrentUserID());
+  require("http").createServer((a,b)=>b.end("Feng V23")).listen(process.env.PORT||3000);
+  // ANTI-BAN OPTIONS
+  api.setOptions({ 
+    listenEvents: false, 
+    selfListen: false, 
+    logLevel: "silent",
+    autoMarkDelivery: false,
+    autoMarkRead: false,
+    updatePresence: false
+  });
 
   const listen = api.listenMqtt || api.listen;
   listen((err, event) => {
-    if (err) { console.log("Listen error, retry:", err.message?.slice(0,100)); setTimeout(startBot, 10000); return; }
-    if (event.type !== "message" && event.type !== "message_reply") return;
+    if (err) return;
+    if (event.type !== "message") return;
     let body = (event.body || "").trim();
-    if (!body || event.senderID == botID) return;
-    const lower = body.toLowerCase();
-    if (!lower.includes("feng") && event.type !== "message_reply") return;
+    if (!body || event.senderID == api.getCurrentUserID()) return;
+    if (!body.toLowerCase().includes("feng")) return;
 
-    if (lower.includes("personality")) {
-      if (lower.includes("list")) {
-        api.sendMessage("normal cold sweet savage bastos conyo emo\nUse: feng personality cold", event.threadID);
-        return;
-      }
-      for (const p in personalities) if (lower.includes(p)) {
-        currentP = p; fs.writeFileSync(pFile, p);
-        api.sendMessage(`Feng is now ${p}`, event.threadID); return;
-      }
-    }
-
-    let prompt = body.replace(/feng/gi, "").trim() || "hi";
-    const mem = getMemory(event.threadID);
-    mem.push(`User: ${prompt}`);
-    if (mem.length > 6) mem.shift();
-
-    (async () => {
+    // ANTI-BAN: DELAY 3-6 SECONDS LIKE HUMAN TYPING
+    const delay = Math.floor(Math.random()*3000)+3000;
+    setTimeout(async () => {
       try {
         const Groq = require("groq-sdk");
         const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
         const completion = await groq.chat.completions.create({
           messages: [
-            { role: "system", content: personalities[currentP] + ` Recent: ${mem.join(" | ")}` },
-            { role: "user", content: prompt }
+            { role: "system", content: personalities[currentP] },
+            { role: "user", content: body.replace(/feng/gi,"").trim()||"hi" }
           ],
           model: "llama-3.3-70b-versatile",
           temperature: 0.85,
-          max_tokens: 50
+          max_tokens: 40
         });
         let reply = completion.choices[0]?.message?.content || "haha";
-        reply = reply.replace(/\*\*/g, "").slice(0, 200);
-        mem.push(`Feng: ${reply}`);
-        if (mem.length > 6) mem.shift();
-        api.sendMessage(reply, event.threadID, event.messageID).catch(()=>api.sendMessage(reply, event.threadID));
-      } catch (e) {
-        console.log("Groq error:", e.message.slice(0,100));
-        api.sendMessage("gagi lag wait", event.threadID);
-      }
-    })();
+        reply = reply.slice(0,150);
+        api.sendMessage(reply, event.threadID);
+      } catch(e) { console.log(e.message.slice(0,50)); }
+    }, delay);
   });
 });
 }
-
 startBot();
