@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
-const fca = require("ws3-fca");
-const login = fca.default || fca.login || fca;
+const fca = require("fca-unofficial");
+const login = fca;
 
 let appState;
 try {
