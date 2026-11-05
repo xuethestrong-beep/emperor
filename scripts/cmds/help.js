@@ -1,132 +1,91 @@
-const fs = require("fs");
-const path = require("path");
-
 module.exports.config = {
   name: "help",
-  aliases: ["menu", "cmds", "commands"],
-  version: "5.0 TENGSAMA",
+  aliases: ["menu", "cmds", "list"],
+  version: "6.0 TENGSAMA CLEAN",
   role: 0,
-  description: "Show all commands"
+  description: "Show commands - clean"
 };
 
 module.exports.onStart = async ({ api, event, args }) => {
-  try { api.setMessageReaction("😆", event.messageID, () => {}, true); } catch {}
+  const { threadID, messageID } = event;
+  const fs = require("fs");
+  const path = require("path");
 
-  const cmdsPath = __dirname;
-  const files = fs.readdirSync(cmdsPath).filter(f => f.endsWith(".js"));
+  const cmdsPath = path.join(__dirname);
+  const files = fs.readdirSync(cmdsPath);
 
-  // Your custom descriptions for your files
-  const customHelp = {
-    "add.js": "➕ Add user to GC: !add @user or !add ID",
-    "addmin.js": "👑 Admin management: !addmin @user, !addmin list",
-    "addmoney.js": "💰 Add money: !addmoney @user 1000",
-    "adminonly.js": "🔐 Admin only mode: !adminonly on/off",
-    "ai.js": "🤖 AI Chat: !ai your question",
-    "antiout.js": "🔒 Anti leave: !antiout on/off",
-    "antispam.js": "🛡️ Anti spam: !antispam on/off/set",
-    "ban.js": "🚫 Ban system: !ban @user, !ban list",
-    "banCheck.js": "🔍 Auto ban check (no command)",
-    "bank.js": "🏦 Bank: !bank, !bank top",
-    "feng.js": "🎴 Feng shui: !feng",
-    "game.js": "🎰 Casino games: !game (slots, etc)",
-    "noPrefix.js": "⚡ No prefix for owner: game, bank, etc",
-    "setNick.js": "📝 Set nickname: !setNick TENGSAMA👍🏿",
-    "welcome.js": "👋 Welcome card: !welcome on/off/test",
-    "help.js": "📋 This menu: !help, !help [cmd name]"
-  };
-
-  const threadID = event.threadID;
-
-  // If user asks help for specific command: !help ban
+  // If user asks help <command> - show only that command info
   if (args[0]) {
-    const cmdName = args[0].toLowerCase().replace(".js", "");
-    const file = files.find(f => f.toLowerCase() === cmdName + ".js");
-    
-    if (file) {
-      try {
-        const cmd = require(path.join(cmdsPath, file));
-        const config = cmd.config || {};
+    const cmdName = args[0].toLowerCase();
+    try {
+      let targetFile = null;
+      for (const file of files) {
+        if (!file.endsWith(".js")) continue;
+        const fullPath = path.join(cmdsPath, file);
+        try {
+          delete require.cache[require.resolve(fullPath)];
+          const cmd = require(fullPath);
+          if (cmd.config && (cmd.config.name === cmdName || cmd.config.aliases?.includes(cmdName))) {
+            targetFile = cmd;
+            break;
+          }
+        } catch {}
+      }
+
+      if (targetFile) {
         return api.sendMessage(
 `╔════════════════════╗
-║ 📖 HELP: ${config.name?.toUpperCase() || cmdName.toUpperCase()} ║
+║ ${targetFile.config.name.toUpperCase()} ║
 ╚════════════════════╝
 
-📄 File: ${file}
-📛 Name: ${config.name || cmdName}
-🔗 Aliases: ${config.aliases ? config.aliases.join(", ") : "None"}
-👑 Role: ${config.role === 2 ? "Admin only" : config.role === 1 ? "GC Admin" : "Everyone"}
-📝 Desc: ${config.description || customHelp[file] || "No description"}
-
-Usage: !${config.name || cmdName}
-
-🔐 Master: TENGSAMA`,
-          threadID, event.messageID
+Name: ${targetFile.config.name}
+${targetFile.config.aliases ? `Alias: ${targetFile.config.aliases.join(", ")}` : ""}
+Desc: ${targetFile.config.description || "No description"}
+Version: ${targetFile.config.version || "1.0"}`,
+          threadID, messageID
         );
-      } catch {}
-    }
-    
-    return api.sendMessage(`❌ Command !${args[0]} not found! Use !help to see all.`, threadID, event.messageID);
-  }
-
-  // Main help menu
-  let total = files.length;
-  let adminCmds = [];
-  let publicCmds = [];
-  let systemCmds = [];
-
-  for (let file of files) {
-    try {
-      const cmdPath = path.join(cmdsPath, file);
-      // Clear cache
-      delete require.cache[require.resolve(cmdPath)];
-      const cmd = require(cmdPath);
-      const role = cmd.config?.role || 0;
-      const name = cmd.config?.name || file.replace(".js", "");
-      
-      if (["banCheck", "noPrefix"].includes(name)) {
-        systemCmds.push(`⚙️ ${name} - system`);
-      } else if (role === 2) {
-        adminCmds.push(`🔒 !${name} - ${customHelp[file] || ""}`);
       } else {
-        publicCmds.push(`✅ !${name} - ${customHelp[file] || ""}`);
+        return api.sendMessage(`❌ Command "${cmdName}" not found!`, threadID, messageID);
       }
-    } catch {
-      publicCmds.push(`✅ !${file.replace(".js","")}`);
-    }
+    } catch {}
   }
+
+  // Main help - CLEAN LIST ONLY, NO EXAMPLES
+  let cmdList = [];
+  files.forEach(file => {
+    if (!file.endsWith(".js")) return;
+    if (file === "help.js") return;
+    try {
+      const fullPath = path.join(cmdsPath, file);
+      delete require.cache[require.resolve(fullPath)];
+      const cmd = require(fullPath);
+      if (cmd.config && cmd.config.name) {
+        cmdList.push(cmd.config.name);
+      }
+    } catch {}
+  });
+
+  cmdList = [...new Set(cmdList)].sort();
+
+  // Divide into categories
+  const adminCmds = ["admin", "add", "ban", "kick", "welcome", "antiout", "setnick", "restart"];
+  const aiCmds = ["ai", "groq", "gpt"];
+  const funCmds = ["game", "bank", "autoreact", "noprefix"];
 
   let msg = `╔════════════════════╗
-║ 👑 TENGSAMA BOT MENU ║
+║ 👑 TENGSAMA MENU ║
 ╚════════════════════╝
 
-📊 Total Commands: ${total}
-👑 Bot: TENGSAMA👍🏿
+📜 ALL COMMANDS (${cmdList.length}):
 
-`;
+${cmdList.join(" • ")}
 
-  if (publicCmds.length > 0) {
-    msg += `╔══ PUBLIC (${publicCmds.length}) ══╗\n`;
-    publicCmds.forEach(c => msg += `║ ${c}\n`);
-    msg += `╚═══════════════════╝\n\n`;
-  }
+━━━━━━━━━━━━━━
+Use: !help <name>
+Example: !help ai
 
-  if (adminCmds.length > 0) {
-    msg += `╔══ ADMIN ONLY (${adminCmds.length}) ══╗\n`;
-    adminCmds.forEach(c => msg += `║ ${c}\n`);
-    msg += `╚═══════════════════╝\n\n`;
-  }
+Owner: 61593117279214
+Groq: Ready ⚡`;
 
-  msg += `📝 How to use:
-├─ !help - this menu
-├─ !help ban - info about ban
-└─ !help game - info about game
-
-💡 Owner no prefix:
-├─ Type: game, bank, welcome
-└─ No need ! for you MASTER!
-
-🔐 Owner: 61593117279214
-⚡ Version: Emperor v5.0`;
-
-  return api.sendMessage(msg, threadID, event.messageID);
+  api.sendMessage(msg, threadID, messageID);
 };
