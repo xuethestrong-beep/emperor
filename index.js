@@ -5,9 +5,8 @@ let appState;
 if(process.env.APPSTATE){
 try{
 appState=JSON.parse(process.env.APPSTATE);
-console.log("Using APPSTATE from Railway!");
+console.log("Using APPSTATE from Railway - 3.8 Flash!");
 }catch(e){
-console.log("APPSTATE parse error, using file");
 appState=JSON.parse(fs.readFileSync(path.join(__dirname,"appstate.json"),"utf8"));
 }
 }else{
@@ -15,15 +14,11 @@ appState=JSON.parse(fs.readFileSync(path.join(__dirname,"appstate.json"),"utf8")
 }
 
 login({appState},(err,api)=>{
-if(err){
-console.error("LOGIN FAILED:",err.error||err);
-return;
-}
-console.log("Emperor Started with Gemini 2.5!");
+if(err){console.error("LOGIN FAILED:",err);return;}
+console.log("Emperor Started with Gemini 3.8 Flash!");
 
-require("http").createServer((a,b)=>b.end("Emperor Alive - Gemini 2.5")).listen(process.env.PORT||3000);
-
-api.setOptions({listenEvents:true,selfListen:false,updatePresence:true});
+require("http").createServer((a,b)=>b.end("Alive 3.8")).listen(process.env.PORT||3000);
+api.setOptions({listenEvents:true,selfListen:false});
 
 api.listen(async(err,event)=>{
 if(err)return;
@@ -34,14 +29,24 @@ if(!body)return;
 try{
 const {GoogleGenerativeAI}=require("@google/generative-ai");
 const genAI=new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-// SPECIFIC MODEL 2.5 FLASH
-const model=genAI.getGenerativeModel({model:"gemini-2.5-flash"});
+// SPECIFIC - NEW MODEL FOR NEW KEYS
+const model=genAI.getGenerativeModel({model:"gemini-3.8-flash"});
 const result=await model.generateContent(body);
-const text=result.response.text();
-api.sendMessage(text,event.threadID,event.messageID);
+api.sendMessage(result.response.text(),event.threadID,event.messageID);
 }catch(e){
-console.log("Gemini error:",e.message);
-api.sendMessage("Gemini 2.5 Error: "+e.message,event.threadID,event.messageID);
+console.log("Error:",e.message);
+// FALLBACK if 3.8 is full
+if(e.message.includes("404")||e.message.includes("3.8")){
+try{
+const {GoogleGenerativeAI}=require("@google/generative-ai");
+const genAI2=new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model2=genAI2.getGenerativeModel({model:"gemini-3.5-flash"});
+const result2=await model2.generateContent(event.body);
+api.sendMessage(result2.response.text(),event.threadID,event.messageID);
+return;
+}catch(e2){}
+}
+api.sendMessage("Error: "+e.message,event.threadID);
 }
 });
 });
