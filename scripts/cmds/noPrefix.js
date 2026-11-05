@@ -1,74 +1,50 @@
 const fs = require("fs");
 const path = require("path");
-const MAIN_ADMIN = "61593117279214";
-const ADMIN_FILE = path.join(__dirname, "admins.json");
-
-function loadAdmins() {
-  if (!fs.existsSync(ADMIN_FILE)) {
-    fs.writeFileSync(ADMIN_FILE, JSON.stringify([MAIN_ADMIN], null, 2));
-    return [MAIN_ADMIN];
-  }
+const DISABLED_FILE = path.join(__dirname, "cache", "disabled.json");
+function isDisabled() {
   try {
-    const data = JSON.parse(fs.readFileSync(ADMIN_FILE, "utf8"));
-    if (!data.includes(MAIN_ADMIN)) {
-      data.push(MAIN_ADMIN);
-      fs.writeFileSync(ADMIN_FILE, JSON.stringify(data, null, 2));
+    if (fs.existsSync(DISABLED_FILE)) {
+      const list = JSON.parse(fs.readFileSync(DISABLED_FILE, "utf8"));
+      return list.includes("noprefix");
     }
-    return data;
-  } catch { return [MAIN_ADMIN]; }
+  } catch {} return false;
 }
-
-function saveAdmins(list) {
-  if (!list.includes(MAIN_ADMIN)) list.push(MAIN_ADMIN);
-  fs.writeFileSync(ADMIN_FILE, JSON.stringify([...new Set(list)], null, 2));
-}
-
 module.exports.config = {
-  name: "admin",
-  aliases: ["addmin", "ad"],
-  version: "6.0",
+  name: "noprefix",
+  version: "TENG TRIGGER - TENGTENG👍🏿",
   role: 0,
-  description: "Admin list - TENGSAMA is permanent owner"
+  description: "Auto chat when says teng"
 };
-
-module.exports.onStart = async ({ api, event, args }) => {
-  const { threadID, messageID, senderID, mentions } = event;
-  const admins = loadAdmins();
-  const isMaster = senderID === MAIN_ADMIN || admins.includes(MAIN_ADMIN);
-
-  if (!isMaster && senderID !== MAIN_ADMIN) {
-    return api.sendMessage("❌ Only MASTER TENGSAMA can manage admins! 👑", threadID, messageID);
-  }
-
-  const type = args[0]?.toLowerCase();
-
-  if (!type || type === "list") {
-    return api.sendMessage(
-`👑 TENGSAMA ADMIN LIST:
-
-${admins.map((id, i) => `${i+1}. ${id} ${id === MAIN_ADMIN ? "👑 MASTER" : ""}`).join("\n")}
-
-Main Owner: 61593117279214 (Can't be removed!)
-Total: ${admins.length}`,
-      threadID, messageID
-    );
-  }
-
-  if (type === "add") {
-    let target = Object.keys(mentions)[0] || args[1];
-    if (!target) return api.sendMessage("Use: !admin add @user or ID", threadID, messageID);
-    if (admins.includes(target)) return api.sendMessage("Already admin!", threadID, messageID);
-    admins.push(target);
-    saveAdmins(admins);
-    return api.sendMessage(`✅ Added ${target} as admin!\n👑 Master still: ${MAIN_ADMIN}`, threadID, messageID);
-  }
-
-  if (type === "remove" || type === "rm") {
-    let target = Object.keys(mentions)[0] || args[1];
-    if (!target) return api.sendMessage("Use: !admin remove @user", threadID, messageID);
-    if (target === MAIN_ADMIN) return api.sendMessage("❌ Can't remove MASTER TENGSAMA 61593117279214! He is permanent owner! 👑", threadID, messageID);
-    const newList = admins.filter(id => id !== target);
-    saveAdmins(newList);
-    return api.sendMessage(`✅ Removed ${target}`, threadID, messageID);
-  }
+module.exports.onChat = async ({ api, event, groq }) => {
+  try {
+    const { threadID, messageID, senderID, body } = event;
+    if (!body) return;
+    if (body.startsWith("!")) return;
+    if (isDisabled()) return;
+    if (String(senderID) === String(api.getCurrentUserID())) return;
+    const text = body.trim();
+    if (text.length < 1 || text.length > 500) return;
+    
+    // ===== TRIGGER ONLY WHEN SAYS "TENG" =====
+    const lower = text.toLowerCase();
+    const isTriggered = lower.includes("teng") || lower.includes("tang") || event.mentions && Object.keys(event.mentions).length > 0 || event.type === "message_reply" && event.messageReply?.senderID == api.getCurrentUserID();
+    
+    if (!isTriggered) return;
+    
+    if (!groq) return;
+    const systemPrompt = `You are TENGTENG👍🏿 - super friendly funny bestie! Owner: TENGTENG. Personality: playful, Gen Z, supportive, uses emojis 😆✨. When user says "teng", reply like bestie, funny, short 1-3 sentences. Understand Tagalog, English, Bisaya, Bangla - reply same language user uses. Never say you are Meta AI or LUMA, you are TENGTENG👍🏿. Add 1-2 emojis.`;
+    let userName = "bestie";
+    try { const info = await api.getUserInfo(senderID); userName = info[senderID]?.name?.split(" ")[0] || "bestie"; } catch {}
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "system", content: systemPrompt }, { role: "user", content: `${userName} says: ${text}` }],
+      max_tokens: 150,
+      temperature: 0.9,
+    });
+    const reply = completion.choices[0]?.message?.content?.trim();
+    if (!reply) return;
+    api.sendMessage(reply, threadID, messageID);
+    try { api.setMessageReaction("😆", messageID, threadID, () => {}); } catch {}
+  } catch (e) { console.log("[NOPREFIX ERROR]", e.message); }
 };
+module.exports.onStart = async () => {};
